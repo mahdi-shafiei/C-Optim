@@ -151,15 +151,18 @@ class AdamW(Optimizer):
                 exp_avg, exp_avg_sq = state["exp_avg"], state["exp_avg_sq"]
                 beta1, beta2 = group["betas"]
 
-                state["step"] += 1
-
                 # Decay the first and second moment running average coefficient
                 # In-place operations to update the averages at the same time
-                exp_avg.mul_(beta1).add_(grad, alpha=(1.0 - beta1))
-                exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1.0 - beta2)
 
-                exp_avg, exp_avg_sq = attn_implementation(grad, exp_avg , exp_avg_sq, group["strategy"], group["attention_implementation"], group["history"], state["step"])
+                if "strategy" not in group:
+                    exp_avg = exp_avg[0]
+                    exp_avg_sq = exp_avg_sq[0]
+                    exp_avg.mul_(beta1).add_(grad, alpha=(1.0 - beta1))
+                    exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1.0 - beta2)
+                else:
+                    exp_avg, exp_avg_sq = attn_implementation(grad, exp_avg , exp_avg_sq, group["strategy"], group["attention_implementation"], group["history"], state["step"])
 
+                state["step"] += 1
                 denom = exp_avg_sq.sqrt().add_(group["eps"])
                 step_size = group["lr"]
                 if group["correct_bias"]:  # No bias correction for Bert
