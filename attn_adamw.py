@@ -160,7 +160,7 @@ class AdamW(Optimizer):
                     exp_avg.mul_(beta1).add_(grad, alpha=(1.0 - beta1))
                     exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1.0 - beta2)
                 else:
-                    exp_avg, exp_avg_sq = attn_implementation(grad, exp_avg , exp_avg_sq, group["strategy"], group["attention_implementation"], group["history"], state["step"])
+                    exp_avg, exp_avg_sq = attn_implementation(grad, exp_avg , exp_avg_sq, group["strategy"], group["attn_implementation"], group["history"], state["step"])
 
                 state["step"] += 1
                 denom = exp_avg_sq.sqrt().add_(group["eps"])
