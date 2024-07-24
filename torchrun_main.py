@@ -288,7 +288,7 @@ def main(args):
                     ]
         elif args.target_module == "all":
             assert args.attn_implementation == "element"
-            regular_params = [p for p in model.parameters() if id(p) not in id_attn_optim_params]
+            regular_params = [p for p in model.parameters()]
             # then call attn_optim_adamw
             param_groups = [{'params': regular_params,
                              'strategy': args.strategy,
