@@ -136,17 +136,19 @@ class AdamW(Optimizer):
                 #'attn_implementation': ["element", "row", "column", "weight"]
                 # State initialization
                 if "exp_avg" not in state:
-                    if group["strategy"] == "cascade":
+                    if "strategy" in group:
+                        if group["strategy"] == "cascade":
+                            state["exp_avg"] = [torch.zeros_like(grad)]
+                            state["exp_avg_sq"] = [torch.zeros_like(grad)]
+                        elif group["strategy"] == "window":
+                            state["exp_avg"] = [torch.zeros_like(grad) for _ in range(group['history'])]
+                            state["exp_avg_sq"] = [torch.zeros_like(grad) for _ in range(group['history'])]
+                        elif group["cascade_window"] == "cascade_window":
+                            state["exp_avg"] = [torch.zeros_like(grad) for _ in range(group['history'])]
+                            state["exp_avg_sq"] = [torch.zeros_like(grad) for _ in range(group['history'])]
+                    else:
                         state["exp_avg"] = [torch.zeros_like(grad)]
                         state["exp_avg_sq"] = [torch.zeros_like(grad)]
-                    elif group["strategy"] == "window":
-                        state["exp_avg"] = [torch.zeros_like(grad) for _ in range(group['history'])]
-                        state["exp_avg_sq"] = [torch.zeros_like(grad) for _ in range(group['history'])]
-                        state["counter"] = 0
-                    elif group["cascade_window"] == "cascade_window":
-                        state["exp_avg"] = [torch.zeros_like(grad) for _ in range(group['history'])]
-                        state["exp_avg_sq"] = [torch.zeros_like(grad) for _ in range(group['history'])]
-                        state["counter"] = 0
 
                 exp_avg, exp_avg_sq = state["exp_avg"], state["exp_avg_sq"]
                 beta1, beta2 = group["betas"]
