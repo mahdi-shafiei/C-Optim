@@ -143,7 +143,7 @@ class AdamW(Optimizer):
                         elif group["strategy"] == "window":
                             state["exp_avg"] = [torch.zeros_like(grad) for _ in range(group['history'])]
                             state["exp_avg_sq"] = [torch.zeros_like(grad) for _ in range(group['history'])]
-                        elif group["cascade_window"] == "cascade_window":
+                        elif group["strategy"] == "cascade_window":
                             state["exp_avg"] = [torch.zeros_like(grad) for _ in range(group['history'])]
                             state["exp_avg_sq"] = [torch.zeros_like(grad) for _ in range(group['history'])]
                     else:
