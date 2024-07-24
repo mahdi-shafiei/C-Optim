@@ -286,6 +286,7 @@ def main(args):
                     'attn_implementation': args.attn_implementation
                     }
                     ]
+            log_params = attn_optim_params
         elif args.target_module == "all":
             assert args.attn_implementation == "element"
             regular_params = [p for p in model.parameters()]
@@ -296,13 +297,14 @@ def main(args):
                              'attn_implementation': args.attn_implementation
                             }
                     ]
+            log_params = regular_params
         
     # print params and trainable params
     logger.info(f"\n{model}\n")
     logger.info(f"Total params: {sum(p.numel() for p in model.parameters()) / 1_000_000:.2f}M")
     logger.info(f"Trainable params: {sum(p.numel() for p in model.parameters() if p.requires_grad) / 1_000_000:.2f}M")
     if 'attn' in args.optimizer.lower():
-        logger.info(f"Total params with attn optimizer enabled: {sum(p.numel() for p in base_params) / 1_000_000:.2f}M")
+        logger.info(f"Total params with attn optimizer enabled: {sum(p.numel() for p in log_params) / 1_000_000:.2f}M")
     logger.info(f"Saving model to {args.save_dir} every {args.save_every} update steps")
     
     layer_wise_flag = False
