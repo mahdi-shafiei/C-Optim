@@ -68,7 +68,7 @@ def parse_args(args):
     # attn_optim parameters
     parser.add_argument("--strategy", type=str, default="cascade", choices = ["cascade", "window", "cascade_window"])
     parser.add_argument("--history", type=int, default=2)
-    parser.add_arugment("--attn_implementation", type=str, default="element", choices = ["element", "row", "weight"])
+    parser.add_argument("--attn_implementation", type=str, default="element", choices = ["element", "row", "weight"])
     parser.add_argument("--target_module", type=str, default="linear", choices = ["linear", "all"])
 
     # disable ddp, single_gpu
