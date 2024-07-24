@@ -24,7 +24,7 @@ def attn_implementation(grad, exp_avg, exp_avg_sq, strategy, attn_impl, window =
         
         avg_attn_map = F.softmax(
             einsum(cat_exp_avg, grad, "t h d, h d -> h t")
-             dim = -1)
+            , dim = -1)
         cat_exp_avg_sq = torch.cat([each.unsqueeze(0) for each in exp_avg_sq], dim = 0)
         avg_sq_attn_map = F.softmax(
             einsum(cat_exp_avg_sq,(grad**2), "t h d, h d -> h t")
