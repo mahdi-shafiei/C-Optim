@@ -263,6 +263,7 @@ def main(args):
         # make parameters with "rank" to a single group, if param_name has "mlp" or "attn"
         if args.target_module == "linear":
             attn_optim_params = []
+            id_attn_optim_params = []
             target_modules_list = ["attn", "mlp"]
             for module_name, module in model.named_modules():
                 if not isinstance(module, nn.Linear):
