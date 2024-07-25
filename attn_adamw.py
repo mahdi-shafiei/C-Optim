@@ -13,14 +13,14 @@ from einops import einsum
 
 def attn_implementation(grad, exp_avg, exp_avg_sq, strategy, attn_impl, window = 0, step = 0, beta1 = 1.0, beta2 = 1.0):
     if attn_impl == "element":
-        cat_exp_avg = torch.cat([each.unsqueeze(0) for each in exp_avg] + [grad.unsqueeze(0)], dim = 0)
+        cat_exp_avg = torch.cat([each.unsqueeze(0) for each in exp_avg], dim = 0)
         avg_attn_map = F.softmax((cat_exp_avg * grad.unsqueeze(0)), dim = 0)
-        cat_exp_avg_sq = torch.cat([each.unsqueeze(0) for each in exp_avg_sq] + [(grad.unsqueeze(0)**2)], dim = 0)
+        cat_exp_avg_sq = torch.cat([each.unsqueeze(0) for each in exp_avg_sq], dim = 0)
         avg_sq_attn_map = F.softmax((cat_exp_avg_sq * (grad.unsqueeze(0)**2)), dim = 0)
-        new_exp_avg = (avg_attn_map * cat_exp_avg).sum(0)
-        new_exp_avg_sq = (avg_sq_attn_map * cat_exp_avg_sq).sum(0)
+        new_exp_avg = (avg_attn_map * cat_exp_avg).sum(0) * beta1 + (1 - beta1) * grad 
+        new_exp_avg_sq = (avg_sq_attn_map * cat_exp_avg_sq).sum(0) * beta2 + (1 - beta2) * grad**2
     elif attn_impl == "row":
-        cat_exp_avg = torch.cat([ beta1 for each in exp_avg] + [ grad.unsqueeze(0)], dim = 0)
+        cat_exp_avg = torch.cat([each.unsqueeze(0) for each in exp_avg] + [ grad.unsqueeze(0)], dim = 0)
         avg_attn_map = F.softmax(
             einsum(cat_exp_avg, grad, "t h d, h d -> h t")
             , dim = -1)
@@ -28,16 +28,16 @@ def attn_implementation(grad, exp_avg, exp_avg_sq, strategy, attn_impl, window =
         avg_sq_attn_map = F.softmax(
             einsum(cat_exp_avg_sq,(grad**2), "t h d, h d -> h t")
             , dim = -1)
-        new_exp_avg = einsum(avg_attn_map, cat_exp_avg, "h t, t h d -> h d")
-        new_exp_avg_sq = einsum(avg_sq_attn_map, cat_exp_avg_sq, "h t, t h d -> h d")
+        new_exp_avg = einsum(avg_attn_map, cat_exp_avg, "h t, t h d -> h d") * beta1 + (1 - beta1) * grad 
+        new_exp_avg_sq = einsum(avg_sq_attn_map, cat_exp_avg_sq, "h t, t h d -> h d") * beta2 + (1 - beta2) * grad**2
     elif attn_impl == "matrix":
         shape = grad.shape
         cat_exp_avg = torch.cat([each.flatten().unsqueeze(0) for each in exp_avg] + [grad.flatten().unsqueeze(0)], dim = 0)
         avg_attn_map = F.softmax((grad.flatten().unsqueeze(0) @ cat_exp_avg.T), dim = 0)
         cat_exp_avg_sq = torch.cat([each.flatten().unsqueeze(0) for each in exp_avg_sq] + [(grad.flatten()**2).unsqueeze(0)], dim = 0)
         avg_sq_attn_map = F.softmax(((grad.flatten()**2).unsqueeze(0) @ cat_exp_avg_sq), dim = 0)
-        new_exp_avg = torch.reshape((avg_attn_map @ cat_exp_avg).squeeze(), shape)
-        new_exp_avg_sq = torch.reshape((avg_sq_attn_map @ cat_exp_avg_sq).squeeze(), shape)
+        new_exp_avg = torch.reshape((avg_attn_map @ cat_exp_avg).squeeze(), shape) * beta1 + (1 - beta1) * grad 
+        new_exp_avg_sq = torch.reshape((avg_sq_attn_map @ cat_exp_avg_sq).squeeze(), shape) * beta2 + (1 - beta2) * grad**2
     if strategy == "cascade":
         exp_avg[0].data = new_exp_avg.data
         exp_avg_sq[0].data = new_exp_avg_sq.data
@@ -137,8 +137,8 @@ class AdamW(Optimizer):
                 if "exp_avg" not in state:
                     if "strategy" in group:
                         if group["strategy"] == "cascade":
-                            state["exp_avg"] = [grad.clone()]
-                            state["exp_avg_sq"] = [grad.clone()]
+                            state["exp_avg"] = [torch.zeros_like(grad)]
+                            state["exp_avg_sq"] = [torch.zeros_like(grad)]
                         elif group["strategy"] == "window":
                             state["exp_avg"] = [torch.zeros_like(grad) for _ in range(group['history'])]
                             state["exp_avg_sq"] = [torch.zeros_like(grad) for _ in range(group['history'])]
