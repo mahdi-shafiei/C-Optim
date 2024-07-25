@@ -11,21 +11,20 @@ from torch.optim import Optimizer
 from transformers.utils.versions import require_version
 from einops import einsum
 
-def attn_implementation(grad, exp_avg, exp_avg_sq, strategy, attn_impl, window = 0, step = 0):
+def attn_implementation(grad, exp_avg, exp_avg_sq, strategy, attn_impl, window = 0, step = 0, beta1 = 1.0, beta2 = 1.0):
     if attn_impl == "element":
-        cat_exp_avg = torch.cat([each.unsqueeze(0) for each in exp_avg], dim = 0)
+        cat_exp_avg = torch.cat([each.unsqueeze(0) * beta1 for each in exp_avg] + [(1.0 - beta1) * grad.unsqueeze(0)], dim = 0)
         avg_attn_map = F.softmax((cat_exp_avg * grad.unsqueeze(0)), dim = 0)
-        cat_exp_avg_sq = torch.cat([each.unsqueeze(0) for each in exp_avg_sq], dim = 0)
+        cat_exp_avg_sq = torch.cat([each.unsqueeze(0) * beta2 for each in exp_avg_sq] + [(1.0 - beta2) * (grad.unsqueeze(0)**2)], dim = 0)
         avg_sq_attn_map = F.softmax((cat_exp_avg_sq * (grad.unsqueeze(0)**2)), dim = 0)
         new_exp_avg = (avg_attn_map * cat_exp_avg).sum(0)
         new_exp_avg_sq = (avg_sq_attn_map * cat_exp_avg_sq).sum(0)
     elif attn_impl == "row":
-        cat_exp_avg = torch.cat([each.unsqueeze(0) for each in exp_avg], dim = 0)
-        
+        cat_exp_avg = torch.cat([each.unsqueeze(0) * beta1 for each in exp_avg] + [(1.0 - beta1) * grad.unsqueeze(0)], dim = 0)
         avg_attn_map = F.softmax(
             einsum(cat_exp_avg, grad, "t h d, h d -> h t")
             , dim = -1)
-        cat_exp_avg_sq = torch.cat([each.unsqueeze(0) for each in exp_avg_sq], dim = 0)
+        cat_exp_avg_sq = torch.cat([each.unsqueeze(0) * beta2 for each in exp_avg_sq] + [(1.0 - beta2) * (grad.unsqueeze(0)**2)], dim = 0)
         avg_sq_attn_map = F.softmax(
             einsum(cat_exp_avg_sq,(grad**2), "t h d, h d -> h t")
             , dim = -1)
@@ -33,9 +32,9 @@ def attn_implementation(grad, exp_avg, exp_avg_sq, strategy, attn_impl, window =
         new_exp_avg_sq = einsum(avg_sq_attn_map, cat_exp_avg_sq, "h t, t h d -> h d")
     elif attn_impl == "matrix":
         shape = grad.shape
-        cat_exp_avg = torch.cat([each.flatten().unsqueeze(0) for each in exp_avg], dim = 0)
+        cat_exp_avg = torch.cat([each.flatten().unsqueeze(0) * beta1 for each in exp_avg] + [(1.0 - beta1) * grad.flatten().unsqueeze(0)], dim = 0)
         avg_attn_map = F.softmax((grad.flatten().unsqueeze(0) @ cat_exp_avg.T), dim = 0)
-        cat_exp_avg_sq = torch.cat([each.flatten().unsqueeze(0) for each in exp_avg_sq], dim = 0)
+        cat_exp_avg_sq = torch.cat([each.flatten().unsqueeze(0) * beta2 for each in exp_avg_sq] + [(1.0 - beta2) * (grad.flatten()**2).unsqueeze(0)], dim = 0)
         avg_sq_attn_map = F.softmax(((grad.flatten()**2).unsqueeze(0) @ cat_exp_avg_sq), dim = 0)
         new_exp_avg = torch.reshape((avg_attn_map @ cat_exp_avg).squeeze(), shape)
         new_exp_avg_sq = torch.reshape((avg_sq_attn_map @ cat_exp_avg_sq).squeeze(), shape)
@@ -162,7 +161,16 @@ class AdamW(Optimizer):
                     exp_avg.mul_(beta1).add_(grad, alpha=(1.0 - beta1))
                     exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1.0 - beta2)
                 else:
-                    exp_avg, exp_avg_sq = attn_implementation(grad, exp_avg , exp_avg_sq, group["strategy"], group["attn_implementation"], group["history"], state["step"])
+                    exp_avg, exp_avg_sq = attn_implementation(grad, 
+                                                              exp_avg, 
+                                                              exp_avg_sq, 
+                                                              group["strategy"], 
+                                                              group["attn_implementation"], 
+                                                              group["history"], 
+                                                              state["step"],
+                                                              beta1,
+                                                              beta2
+                                                              )
 
                 state["step"] += 1
                 denom = exp_avg_sq.sqrt().add_(group["eps"])
