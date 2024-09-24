@@ -101,6 +101,8 @@ class AdamW(Optimizer):
                 # In-place operations to update the averages at the same time
                 beta1 = torch.clip((exp_avg - grad).abs()/grad.abs(), max = beta1)
                 exp_avg.mul_(beta1).add_(grad, alpha=(1.0 - beta1))
+                # grad_sq = grad * grad
+                # beta2 = torch.clip((exp_avg_sq - grad_sq).abs()/grad_sq, max = beta2)
                 exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1.0 - beta2)
                 denom = exp_avg_sq.sqrt().add_(group["eps"])
 
