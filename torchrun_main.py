@@ -26,7 +26,7 @@ from peft_pretraining.dataloader import PreprocessedIterableDataset
 from peft_pretraining.modeling_llama import LlamaForCausalLM
 
 import bitsandbytes as bnb
-from attn_adamw import AdamW as AttnAdamW
+from adabeta import AdaBeta
 
 transformers.logging.set_verbosity_error()
 
@@ -64,12 +64,6 @@ def parse_args(args):
     parser.add_argument("--grad_clipping", type=float, default=0.0)   
     # beta1 for adafactor
     parser.add_argument("--beta1", type=float, default=0.0)
-    
-    # attn_optim parameters
-    parser.add_argument("--strategy", type=str, default="cascade", choices = ["cascade", "window", "cascade_window"])
-    parser.add_argument("--history", type=int, default=2)
-    parser.add_argument("--attn_implementation", type=str, default="element", choices = ["element", "row", "weight"])
-    parser.add_argument("--target_module", type=str, default="linear", choices = ["linear", "all"])
 
     # disable ddp, single_gpu
     parser.add_argument("--single_gpu", default=False, action="store_true")
@@ -157,7 +151,7 @@ def main(args):
             
     # initialize wandb without config (it is passed later)
     if global_rank == 0:
-        wandb.init(project="attn-optim-c4")
+        wandb.init(project="adabeta-c4")
         
     logger.info(f"Using dist with rank {global_rank} (only rank 0 will log)")
     logger.info("*" * 40)
@@ -259,60 +253,18 @@ def main(args):
         # doesn't jump around when changing from external display to laptop
         pbar = tqdm(total=args.num_training_steps - update_step, desc="Update steps", ncols=80)
     
-    if 'attn' in args.optimizer.lower():
-        # make parameters with "rank" to a single group, if param_name has "mlp" or "attn"
-        if args.target_module == "linear":
-            attn_optim_params = []
-            id_attn_optim_params = []
-            target_modules_list = ["attn", "mlp"]
-            for module_name, module in model.named_modules():
-                if not isinstance(module, nn.Linear):
-                    continue
-
-                if not any(target_key in module_name for target_key in target_modules_list):
-                    continue
-                
-                print('enable attn optimizer for weights in module: ', module_name)
-                attn_optim_params.append(module.weight)
-
-            id_attn_optim_params = [id(p) for p in attn_optim_params]
-            # make parameters without "rank" to another group
-            regular_params = [p for p in model.parameters() if id(p) not in id_attn_optim_params]
-            # then call attn_optim_adamw
-            param_groups = [{'params': regular_params}, 
-                    {'params': attn_optim_params,
-                    'strategy': args.strategy,
-                    'history': args.history,
-                    'attn_implementation': args.attn_implementation
-                    }
-                    ]
-            log_params = attn_optim_params
-        elif args.target_module == "all":
-            assert args.attn_implementation == "element"
-            regular_params = [p for p in model.parameters()]
-            # then call attn_optim_adamw
-            param_groups = [{'params': regular_params,
-                             'strategy': args.strategy,
-                             'history': args.history,
-                             'attn_implementation': args.attn_implementation
-                            }
-                    ]
-            log_params = regular_params
         
     # print params and trainable params
     logger.info(f"\n{model}\n")
     logger.info(f"Total params: {sum(p.numel() for p in model.parameters()) / 1_000_000:.2f}M")
     logger.info(f"Trainable params: {sum(p.numel() for p in model.parameters() if p.requires_grad) / 1_000_000:.2f}M")
-    if 'attn' in args.optimizer.lower():
-        logger.info(f"Total params with attn optimizer enabled: {sum(p.numel() for p in log_params) / 1_000_000:.2f}M")
     logger.info(f"Saving model to {args.save_dir} every {args.save_every} update steps")
     
     layer_wise_flag = False
     if args.optimizer.lower() == "adamw":
         optimizer = torch.optim.AdamW(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
-    elif args.optimizer.lower() == "attn_adamw":
-        # redefine way to call attn_adamw
-        optimizer = AttnAdamW(param_groups, lr=args.lr, weight_decay=args.weight_decay)
+    elif args.optimizer.lower() == "adabeta":
+        optimizer = AdaBeta(param_groups, lr=args.lr, weight_decay=args.weight_decay)
     # implement sgd
     elif args.optimizer.lower() == "sgd":
         optimizer = torch.optim.SGD(trainable_params, lr=args.lr, weight_decay=args.weight_decay, momentum=args.beta1)
