@@ -7,52 +7,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from torch.optim import Optimizer
-
-from transformers.utils.versions import require_version
 from einops import einsum
-
-def attn_implementation(grad, exp_avg, exp_avg_sq, strategy, attn_impl, window = 0, step = 0, beta1 = 1.0, beta2 = 1.0):
-    if attn_impl == "element":
-        cat_exp_avg = torch.cat([each.unsqueeze(0) for each in exp_avg], dim = 0)
-        avg_attn_map = F.softmax((cat_exp_avg * grad.unsqueeze(0)), dim = 0)
-        cat_exp_avg_sq = torch.cat([each.unsqueeze(0) for each in exp_avg_sq], dim = 0)
-        avg_sq_attn_map = F.softmax((cat_exp_avg_sq * (grad.unsqueeze(0)**2)), dim = 0)
-        new_exp_avg = (avg_attn_map * cat_exp_avg).sum(0) * beta1 + (1 - beta1) * grad 
-        new_exp_avg_sq = (avg_sq_attn_map * cat_exp_avg_sq).sum(0) * beta2 + (1 - beta2) * grad**2
-    elif attn_impl == "row":
-        cat_exp_avg = torch.cat([each.unsqueeze(0) for each in exp_avg] + [ grad.unsqueeze(0)], dim = 0)
-        avg_attn_map = F.softmax(
-            einsum(cat_exp_avg, grad, "t h d, h d -> h t")
-            , dim = -1)
-        cat_exp_avg_sq = torch.cat([each.unsqueeze(0) for each in exp_avg_sq] + [(grad.unsqueeze(0)**2)], dim = 0)
-        avg_sq_attn_map = F.softmax(
-            einsum(cat_exp_avg_sq,(grad**2), "t h d, h d -> h t")
-            , dim = -1)
-        new_exp_avg = einsum(avg_attn_map, cat_exp_avg, "h t, t h d -> h d") * beta1 + (1 - beta1) * grad 
-        new_exp_avg_sq = einsum(avg_sq_attn_map, cat_exp_avg_sq, "h t, t h d -> h d") * beta2 + (1 - beta2) * grad**2
-    elif attn_impl == "matrix":
-        shape = grad.shape
-        cat_exp_avg = torch.cat([each.flatten().unsqueeze(0) for each in exp_avg] + [grad.flatten().unsqueeze(0)], dim = 0)
-        avg_attn_map = F.softmax((grad.flatten().unsqueeze(0) @ cat_exp_avg.T), dim = 0)
-        cat_exp_avg_sq = torch.cat([each.flatten().unsqueeze(0) for each in exp_avg_sq] + [(grad.flatten()**2).unsqueeze(0)], dim = 0)
-        avg_sq_attn_map = F.softmax(((grad.flatten()**2).unsqueeze(0) @ cat_exp_avg_sq), dim = 0)
-        new_exp_avg = torch.reshape((avg_attn_map @ cat_exp_avg).squeeze(), shape) * beta1 + (1 - beta1) * grad 
-        new_exp_avg_sq = torch.reshape((avg_sq_attn_map @ cat_exp_avg_sq).squeeze(), shape) * beta2 + (1 - beta2) * grad**2
-    if strategy == "cascade":
-        exp_avg[0].data = new_exp_avg.data
-        exp_avg_sq[0].data = new_exp_avg_sq.data
-        return exp_avg[0], exp_avg_sq[0]
-    elif strategy == "window":
-        idx = step%window
-        exp_avg[idx].data = grad.data
-        exp_avg_sq[idx].data = (grad**2).data
-        return new_exp_avg, new_exp_avg_sq
-    elif strategy == "cascade_window":
-        idx = step%window
-        exp_avg[idx].data = new_exp_avg.data
-        exp_avg_sq[idx].data = new_exp_avg_sq.data
-        return new_exp_avg, new_exp_avg_sq
-
 
 class AdamW(Optimizer):
     """
@@ -104,6 +59,7 @@ class AdamW(Optimizer):
             raise ValueError(f"Invalid epsilon value: {eps} - should be >= 0.0")
         defaults = {"lr": lr, "betas": betas, "eps": eps, "weight_decay": weight_decay, "correct_bias": correct_bias}
         super().__init__(params, defaults)
+        self.init_lr = lr
 
     @torch.no_grad()
     def step(self, closure: Callable = None):
@@ -129,51 +85,25 @@ class AdamW(Optimizer):
                 
                 if "step" not in state:
                     state["step"] = 0
-                
-                #'strategy': ["cascade", "window", "cascade_window"]
-                #'history': 2
-                #'attn_implementation': ["element", "row", "column", "weight"]
+
                 # State initialization
                 if "exp_avg" not in state:
-                    if "strategy" in group:
-                        if group["strategy"] == "cascade":
-                            state["exp_avg"] = [torch.zeros_like(grad)]
-                            state["exp_avg_sq"] = [torch.zeros_like(grad)]
-                        elif group["strategy"] == "window":
-                            state["exp_avg"] = [torch.zeros_like(grad) for _ in range(group['history'])]
-                            state["exp_avg_sq"] = [torch.zeros_like(grad) for _ in range(group['history'])]
-                        elif group["strategy"] == "cascade_window":
-                            state["exp_avg"] = [torch.zeros_like(grad) for _ in range(group['history'])]
-                            state["exp_avg_sq"] = [torch.zeros_like(grad) for _ in range(group['history'])]
-                    else:
-                        state["exp_avg"] = [torch.zeros_like(grad)]
-                        state["exp_avg_sq"] = [torch.zeros_like(grad)]
+                    # Exponential moving average of gradient values
+                    state["exp_avg"] = torch.zeros_like(grad)
+                    # Exponential moving average of squared gradient values
+                    state["exp_avg_sq"] = torch.zeros_like(grad)
 
                 exp_avg, exp_avg_sq = state["exp_avg"], state["exp_avg_sq"]
                 beta1, beta2 = group["betas"]
 
+                state["step"] += 1
+
                 # Decay the first and second moment running average coefficient
                 # In-place operations to update the averages at the same time
-
-                if "strategy" not in group:
-                    exp_avg = exp_avg[0]
-                    exp_avg_sq = exp_avg_sq[0]
-                    exp_avg.mul_(beta1).add_(grad, alpha=(1.0 - beta1))
-                    exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1.0 - beta2)
-                else:
-                    exp_avg, exp_avg_sq = attn_implementation(grad, 
-                                                              exp_avg, 
-                                                              exp_avg_sq, 
-                                                              group["strategy"], 
-                                                              group["attn_implementation"], 
-                                                              group["history"], 
-                                                              state["step"],
-                                                              beta1,
-                                                              beta2
-                                                              )
-
-                state["step"] += 1
+                exp_avg.mul_(beta1).add_(grad, alpha=(1.0 - beta1))
+                exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1.0 - beta2)
                 denom = exp_avg_sq.sqrt().add_(group["eps"])
+
                 step_size = group["lr"]
                 if group["correct_bias"]:  # No bias correction for Bert
                     bias_correction1 = 1.0 - beta1 ** state["step"]
@@ -182,7 +112,6 @@ class AdamW(Optimizer):
 
                 # compute norm gradient
                 norm_grad = exp_avg / denom
-                
                 p.add_(norm_grad, alpha=-step_size)
 
                 # Just adding the square of the weights to the loss function is *not*
@@ -195,4 +124,5 @@ class AdamW(Optimizer):
                 # Add weight decay at the end (fixed version)
                 if group["weight_decay"] > 0.0:
                     p.add_(p, alpha=(-group["lr"] * group["weight_decay"]))
+
         return loss
