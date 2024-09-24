@@ -7,7 +7,6 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from torch.optim import Optimizer
-from einops import einsum
 
 class AdamW(Optimizer):
     """
@@ -100,6 +99,7 @@ class AdamW(Optimizer):
 
                 # Decay the first and second moment running average coefficient
                 # In-place operations to update the averages at the same time
+                beta1 = torch.clip((exp_avg - grad).abs()/grad.abs(), max = beta1)
                 exp_avg.mul_(beta1).add_(grad, alpha=(1.0 - beta1))
                 exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1.0 - beta2)
                 denom = exp_avg_sq.sqrt().add_(group["eps"])
