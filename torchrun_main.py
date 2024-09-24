@@ -26,7 +26,7 @@ from peft_pretraining.dataloader import PreprocessedIterableDataset
 from peft_pretraining.modeling_llama import LlamaForCausalLM
 
 import bitsandbytes as bnb
-from adabeta import AdaBeta
+from adabeta import AdamW as AdaBeta
 
 transformers.logging.set_verbosity_error()
 
