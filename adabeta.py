@@ -114,7 +114,8 @@ class AdamW(Optimizer):
 
                 # compute norm gradient
                 norm_grad = exp_avg / denom
-                p.add_(norm_grad, alpha=-step_size)
+                p.add_(norm_grad * (-step_size))
+                # p.add_(norm_grad, alpha=-step_size)
 
                 # Just adding the square of the weights to the loss function is *not*
                 # the correct way of using L2 regularization/weight decay with Adam,
