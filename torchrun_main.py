@@ -264,7 +264,7 @@ def main(args):
     if args.optimizer.lower() == "adamw":
         optimizer = torch.optim.AdamW(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
     elif args.optimizer.lower() == "adabeta":
-        optimizer = AdaBeta(param_groups, lr=args.lr, weight_decay=args.weight_decay)
+        optimizer = AdaBeta(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
     # implement sgd
     elif args.optimizer.lower() == "sgd":
         optimizer = torch.optim.SGD(trainable_params, lr=args.lr, weight_decay=args.weight_decay, momentum=args.beta1)
