@@ -98,7 +98,7 @@ class AdamW(Optimizer):
 
                 # Decay the first and second moment running average coefficient
                 # In-place operations to update the averages at the same time
-                beta1 = torch.clip((exp_avg - grad).abs()/exp_avg.abs(), max = beta1)
+                beta1 = torch.clip((exp_avg - grad).abs()/exp_avg.abs(), max = 1) * beta1
                 exp_avg.mul_(beta1).add_(grad * (1.0 - beta1))
                 # exp_avg.mul_(beta1).add_(grad, alpha=(1.0 - beta1))
                 # grad_sq = grad * grad
