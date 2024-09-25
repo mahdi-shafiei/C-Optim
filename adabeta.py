@@ -47,7 +47,6 @@ class AdamW(Optimizer):
                 " warning",
                 FutureWarning,
             )
-        require_version("torch>=1.5.0")  # add_ with alpha
         if lr < 0.0:
             raise ValueError(f"Invalid learning rate: {lr} - should be >= 0.0")
         if not 0.0 <= betas[0] < 1.0:
