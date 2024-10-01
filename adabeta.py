@@ -86,25 +86,24 @@ class AdamW(Optimizer):
 
                 # State initialization
                 if "exp_avg" not in state:
+                    state["momentum"] = torch.zeros_like(grad)
                     # Exponential moving average of gradient values
                     state["exp_avg"] = torch.zeros_like(grad)
                     # Exponential moving average of squared gradient values
                     state["exp_avg_sq"] = torch.zeros_like(grad)
 
-                exp_avg, exp_avg_sq = state["exp_avg"], state["exp_avg_sq"]
+                momentum, exp_avg, exp_avg_sq = state["momentum"], state["exp_avg"], state["exp_avg_sq"]
                 beta1, beta2 = group["betas"]
 
                 state["step"] += 1
 
                 # Decay the first and second moment running average coefficient
                 # In-place operations to update the averages at the same time
-                # beta1 = torch.clip((exp_avg - grad).abs()/exp_avg.abs(), max = 0.99) * beta1
-                # exp_avg.mul_(beta1).add_(grad * (1.0 - beta1))
-                beta1 = ((1 + torch.dot(exp_avg.flatten()/torch.norm(exp_avg.flatten()), grad.flatten()/torch.norm(grad.flatten())))/2).item()
-                exp_avg.mul_(beta1).add_(grad, alpha=(1.0 - beta1))
-                # grad_sq = grad * grad
-                # beta2 = torch.clip((exp_avg_sq - grad_sq).abs()/grad_sq, max = beta2)
-                exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1.0 - beta2)
+                momentum.mul_(beta1).add_(grad, alpha=(1.0 - beta1))
+                grad_r = grad/(momentum + 1e-8)
+                
+                exp_avg.mul_(beta1).add_(grad_r, alpha=(1.0 - beta1))
+                exp_avg_sq.mul_(beta2).addcmul_(grad_r, grad_r, value=1.0 - beta2)
                 denom = exp_avg_sq.sqrt().add_(group["eps"])
 
                 step_size = group["lr"]
@@ -114,9 +113,8 @@ class AdamW(Optimizer):
                     step_size = step_size * math.sqrt(bias_correction2) / bias_correction1
 
                 # compute norm gradient
-                norm_grad = exp_avg / denom
-                # p.add_(norm_grad * (-step_size))
-                p.add_(norm_grad, alpha=-step_size)
+                norm_grad_r = exp_avg / denom
+                p.add_(norm_grad_r * momentum, alpha=-step_size)
 
                 # Just adding the square of the weights to the loss function is *not*
                 # the correct way of using L2 regularization/weight decay with Adam,
