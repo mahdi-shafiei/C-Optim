@@ -62,6 +62,8 @@ def parse_args(args):
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--name", type=str, default="test")
     parser.add_argument("--grad_clipping", type=float, default=0.0)   
+    parser.add_argument("--betas", type=float, default=[0.999, 0.9, 0.999], nargs='+')
+    parser.add_argument("--double_momentum", default=False, action="store_true")
     # beta1 for adafactor
     parser.add_argument("--beta1", type=float, default=0.0)
 
@@ -264,7 +266,7 @@ def main(args):
     if args.optimizer.lower() == "adamw":
         optimizer = torch.optim.AdamW(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
     elif args.optimizer.lower() == "adabeta":
-        optimizer = AdaBeta(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
+        optimizer = AdaBeta(trainable_params, lr=args.lr, weight_decay=args.weight_decay, betas = args.betas, double_momentum = args.double_momentum)
     # implement sgd
     elif args.optimizer.lower() == "sgd":
         optimizer = torch.optim.SGD(trainable_params, lr=args.lr, weight_decay=args.weight_decay, momentum=args.beta1)

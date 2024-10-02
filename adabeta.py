@@ -34,11 +34,12 @@ class AdamW(Optimizer):
         self,
         params: Iterable[nn.parameter.Parameter],
         lr: float = 1e-3,
-        betas: Tuple[float, float] = (0.9, 0.999),
+        betas: Tuple[float, float] = (0.999, 0.9, 0.999),
         eps: float = 1e-6,
         weight_decay: float = 0.0,
         correct_bias: bool = True,
         no_deprecation_warning: bool = False,
+        double_momentum: bool = False
     ):
         if not no_deprecation_warning:
             warnings.warn(
@@ -91,30 +92,47 @@ class AdamW(Optimizer):
                     state["exp_avg"] = torch.zeros_like(grad)
                     # Exponential moving average of squared gradient values
                     state["exp_avg_sq"] = torch.zeros_like(grad)
+                    if self.double_momentum:
+                        state["momentum_slow"] = torch.zeros_like(grad)
 
-                momentum, exp_avg, exp_avg_sq = state["momentum"], state["exp_avg"], state["exp_avg_sq"]
-                beta1, beta2 = group["betas"]
+                if self.double_momentum:
+                    momentum_slow, momentum, exp_avg, exp_avg_sq = state["momentum_slow"], state["momentum"], state["exp_avg"], state["exp_avg_sq"]
+                    beta00, beta01, beta1, beta2 = group["betas"]
+                else:
+                    momentum, exp_avg, exp_avg_sq = state["momentum"], state["exp_avg"], state["exp_avg_sq"]
+                    beta0, beta1, beta2 = group["betas"]
 
                 state["step"] += 1
 
                 # Decay the first and second moment running average coefficient
                 # In-place operations to update the averages at the same time
-                momentum.mul_(beta1).add_(grad, alpha=(1.0 - beta1))
-                grad_r = grad/(momentum + 1e-8)
+                if self.double_momentum:
+                    momentum_slow.mul_(beta00).add_(grad, alpha=(1.0 - beta00))
+                    momentum_slow = momentum_slow/(1 - beta00**state["step"])
+                    momentum.mul_(beta01).add_(grad, alpha=(1.0 - beta01))
+                    momentum = momentum/(1 - beta01**state["step"])
+                    grad_r = momemtum - momemtum_slow
+                else:
+                    momentum.mul_(beta0).add_(grad, alpha=(1.0 - beta0))
+                    momentum = momentum/(1 - beta0**state["step"])
+                    grad_r = grad - momentum
                 
                 exp_avg.mul_(beta1).add_(grad_r, alpha=(1.0 - beta1))
                 exp_avg_sq.mul_(beta2).addcmul_(grad_r, grad_r, value=1.0 - beta2)
                 denom = exp_avg_sq.sqrt().add_(group["eps"])
 
                 step_size = group["lr"]
-                if group["correct_bias"]:  # No bias correction for Bert
-                    bias_correction1 = 1.0 - beta1 ** state["step"]
-                    bias_correction2 = 1.0 - beta2 ** state["step"]
-                    step_size = step_size * math.sqrt(bias_correction2) / bias_correction1
+                #if group["correct_bias"]:  # No bias correction for Bert
+                #    bias_correction1 = 1.0 - beta1 ** state["step"]
+                #    bias_correction2 = 1.0 - beta2 ** state["step"]
+                #    step_size = step_size * math.sqrt(bias_correction2) / bias_correction1
 
                 # compute norm gradient
                 norm_grad_r = exp_avg / denom
-                p.add_(norm_grad_r * momentum, alpha=-step_size)
+                if self.double_momentum:
+                    p.add_(norm_grad_r + momentum_slow/torch.norm(momentum_slow), alpha=-step_size)
+                else:
+                    p.add_(norm_grad_r + momentum/torch.norm(momentum), alpha=-step_size)
 
                 # Just adding the square of the weights to the loss function is *not*
                 # the correct way of using L2 regularization/weight decay with Adam,
