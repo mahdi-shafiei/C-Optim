@@ -58,7 +58,7 @@ class AdamW(Optimizer):
             raise ValueError(f"Invalid epsilon value: {eps} - should be >= 0.0")
         defaults = {"lr": lr, "betas": betas, "eps": eps, "weight_decay": weight_decay, "correct_bias": correct_bias}
         super().__init__(params, defaults)
-        self.init_lr = lr
+        self.double_momentum = double_momentum
 
     @torch.no_grad()
     def step(self, closure: Callable = None):
@@ -107,13 +107,13 @@ class AdamW(Optimizer):
                 # Decay the first and second moment running average coefficient
                 # In-place operations to update the averages at the same time
                 if self.double_momentum:
-                    momentum_slow.mul_(beta00).add_(grad, alpha=(1.0 - beta00))
+                    momentum_slow.mul_(beta1).add_(grad, alpha=(1.0 - beta00))
                     momentum_slow = momentum_slow/(1 - beta00**state["step"])
                     momentum.mul_(beta01).add_(grad, alpha=(1.0 - beta01))
                     momentum = momentum/(1 - beta01**state["step"])
-                    grad_r = momemtum - momemtum_slow
+                    grad_r = momentum - momentum_slow
                 else:
-                    momentum.mul_(beta0).add_(grad, alpha=(1.0 - beta0))
+                    momentum.mul_(beta1).add_(grad, alpha=(1.0 - beta0))
                     momentum = momentum/(1 - beta0**state["step"])
                     grad_r = grad - momentum
                 
