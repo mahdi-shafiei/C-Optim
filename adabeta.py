@@ -107,15 +107,15 @@ class AdamW(Optimizer):
                 # Decay the first and second moment running average coefficient
                 # In-place operations to update the averages at the same time
                 if self.double_momentum:
-                    momentum_slow.mul_(beta1).add_(grad, alpha=(1.0 - beta00))
                     momentum_slow = momentum_slow/(1 - beta00**state["step"])
-                    momentum.mul_(beta01).add_(grad, alpha=(1.0 - beta01))
                     momentum = momentum/(1 - beta01**state["step"])
                     grad_r = momentum - momentum_slow
+                    momentum_slow.mul_(beta00).add_(grad, alpha=(1.0 - beta00))
+                    momentum.mul_(beta01).add_(grad, alpha=(1.0 - beta01))
                 else:
-                    momentum.mul_(beta1).add_(grad, alpha=(1.0 - beta0))
                     momentum = momentum/(1 - beta0**state["step"])
                     grad_r = grad - momentum
+                    momentum.mul_(beta0).add_(grad, alpha=(1.0 - beta0))
                 
                 exp_avg.mul_(beta1).add_(grad_r, alpha=(1.0 - beta1))
                 exp_avg_sq.mul_(beta2).addcmul_(grad_r, grad_r, value=1.0 - beta2)
