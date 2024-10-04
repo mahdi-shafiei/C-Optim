@@ -63,7 +63,7 @@ def parse_args(args):
     parser.add_argument("--name", type=str, default="test")
     parser.add_argument("--grad_clipping", type=float, default=0.0)   
     parser.add_argument("--betas", type=float, default=[0.999, 0.9, 0.999], nargs='+')
-    parser.add_argument("--double_momentum", default=False, action="store_true")
+    parser.add_argument("--momentum_in_update", default="norm", type=str)
     # beta1 for adafactor
     parser.add_argument("--beta1", type=float, default=0.0)
 
@@ -266,7 +266,7 @@ def main(args):
     if args.optimizer.lower() == "adamw":
         optimizer = torch.optim.AdamW(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
     elif args.optimizer.lower() == "adabeta":
-        optimizer = AdaBeta(trainable_params, lr=args.lr, weight_decay=args.weight_decay, betas = args.betas, double_momentum = args.double_momentum)
+        optimizer = AdaBeta(trainable_params, lr=args.lr, weight_decay=args.weight_decay, betas = args.betas, momentum_in_update = args.momentum_in_update)
     # implement sgd
     elif args.optimizer.lower() == "sgd":
         optimizer = torch.optim.SGD(trainable_params, lr=args.lr, weight_decay=args.weight_decay, momentum=args.beta1)
@@ -360,9 +360,10 @@ def main(args):
             current_model_directory = f"{args.save_dir}/model_{update_step}"
             logger.info(f"Saving model and optimizer to {current_model_directory}, update step {update_step}")
             os.makedirs(args.save_dir, exist_ok=True)
-            try:
+            model.generation_config.pad_token_id = model.generation_config.eos_token_id # Hack to get around saving checking
+            if hasattr(model, "module"):
                 model.module.save_pretrained(current_model_directory, max_shard_size='100GB')
-            except:
+            else:
                 model.save_pretrained(current_model_directory, max_shard_size='100GB')
             optimizer_checkpoint = {
                 "optimizer": optimizer.state_dict(),
@@ -439,9 +440,10 @@ def main(args):
     if global_rank == 0 and not os.path.exists(current_model_directory):
         logger.info(f"Saving model and optimizer to {current_model_directory}, update step {update_step}")
         os.makedirs(args.save_dir, exist_ok=True)
-        try:
+        model.generation_config.pad_token_id = model.generation_config.eos_token_id # Hack to get around saving checking
+        if hasattr(model, "module"):
             model.module.save_pretrained(current_model_directory)
-        except:
+        else:
             model.save_pretrained(current_model_directory)
         optimizer_checkpoint = {
             "optimizer": optimizer.state_dict(),
