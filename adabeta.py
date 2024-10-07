@@ -60,6 +60,12 @@ class AdamW(Optimizer):
         defaults = {"lr": lr, "betas": betas, "eps": eps, "weight_decay": weight_decay, "correct_bias": correct_bias}
         super().__init__(params, defaults)
         self.lambdas = lambdas
+        self.param_count = 0
+        for group in self.param_groups:
+            for i, p in enumerate(group["params"]):
+                self.param_count+=p.numel()
+        self.bias_correction1 = 1
+        self.bias_correction2 = 1
 
     @torch.no_grad()
     def step(self, closure: Callable = None):
@@ -107,16 +113,16 @@ class AdamW(Optimizer):
                 step_size = group["lr"]
 
                 if group["correct_bias"]:  # No bias correction for Bert
-                    bias_correction1 = 1.0 - beta1 ** state["step"]
-                    bias_correction2 = 1.0 - beta2 ** state["step"]
-                    step_size = step_size * math.sqrt(bias_correction2) / bias_correction1
+                    self.bias_correction1 *= beta1
+                    self.bias_correction2 *= beta2
+                    step_size = step_size * math.sqrt(1 - self.bias_correction2) / (1 - self.bias_correction1)
  
                 # compute norm gradient
                 norm_grad = exp_avg / denom
                 p.add_(norm_grad, alpha=-step_size)
-                group["betas"][0] -= - (self.lambdas[0] * grad * step_size / denom / (1.0 - beta1 ** state["step"])**2 * ((state["step"] * beta1**(state["step"] - 1) * grad) + (exp_avg - grad) * (1 + (state["step"] - 1) * beta1**state["step"]) / beta1)).sum().item()
-                group["betas"][0] = np.clip(group["betas"][0], 0, 1)
-                group["betas"][1] = np.clip(group["betas"][1], 0, 1)
+                group["betas"][0] -= - (self.lambdas[0] * grad * step_size / denom / (1.0 - beta1 ** state["step"])**2 * ((state["step"] * beta1**(state["step"] - 1) * grad) + (exp_avg - grad) * (1 + (state["step"] - 1) * beta1**state["step"]) / beta1)).sum().item() / self.param_count
+                group["betas"][0] = np.clip(group["betas"][0], 1e-8, 1)
+                group["betas"][1] = np.clip(group["betas"][1], 1e-8, 1)
                 # Just adding the square of the weights to the loss function is *not*
                 # the correct way of using L2 regularization/weight decay with Adam,
                 # since that will interact with the m and v parameters in strange ways.
