@@ -78,7 +78,8 @@ class AdamW(Optimizer):
         loss = None
         if closure is not None:
             loss = closure()
-
+        
+        tmp_betas = [state["betas"][0], state["betas"][1]]
         for group in self.param_groups:
             for i, p in enumerate(group["params"]):
                 if p.grad is None:
@@ -120,9 +121,9 @@ class AdamW(Optimizer):
                 # compute norm gradient
                 norm_grad = exp_avg / denom
                 p.add_(norm_grad, alpha=-step_size)
-                group["betas"][0] -= - (self.lambdas[0] * grad * step_size / denom / (1.0 - beta1 ** state["step"])**2 * ((state["step"] * beta1**(state["step"] - 1) * grad) + (exp_avg - grad) * (1 + (state["step"] - 1) * beta1**state["step"]) / beta1)).sum().item() / self.param_count
-                group["betas"][0] = np.clip(group["betas"][0], 1e-8, 1)
-                group["betas"][1] = np.clip(group["betas"][1], 1e-8, 1)
+                tmp_betas[0] -= - (self.lambdas[0] * grad * step_size / denom / (1.0 - beta1 ** state["step"])**2 * ((state["step"] * beta1**(state["step"] - 1) * grad) + (exp_avg - grad) * (1 + (state["step"] - 1) * beta1**state["step"]) / beta1)).sum().item() / self.param_count
+                tmp_betas[0] = np.clip(tmp_betas[0], 1e-8, 1)
+                tmp_betas[1] = np.clip(tmp_betas[1], 1e-8, 1)
                 # Just adding the square of the weights to the loss function is *not*
                 # the correct way of using L2 regularization/weight decay with Adam,
                 # since that will interact with the m and v parameters in strange ways.
@@ -133,5 +134,5 @@ class AdamW(Optimizer):
                 # Add weight decay at the end (fixed version)
                 if group["weight_decay"] > 0.0:
                     p.add_(p, alpha=(-group["lr"] * group["weight_decay"]))
-
+        state["betas"] = tmp_betas
         return loss
