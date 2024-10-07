@@ -7,6 +7,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from torch.optim import Optimizer
+import numpy as np
 
 class AdamW(Optimizer):
     """
@@ -114,6 +115,8 @@ class AdamW(Optimizer):
                 norm_grad = exp_avg / denom
                 p.add_(norm_grad, alpha=-step_size)
                 group["betas"][0] -= - (self.lambdas[0] * grad * step_size / denom / (1.0 - beta1 ** state["step"])**2 * ((state["step"] * beta1**(state["step"] - 1) * grad) + (exp_avg - grad) * (1 + (state["step"] - 1) * beta1**state["step"]) / beta1)).sum().item()
+                group["betas"][0] = np.clip(group["betas"][0], 0, 1)
+                group["betas"][1] = np.clip(group["betas"][1], 0, 1)
                 # Just adding the square of the weights to the loss function is *not*
                 # the correct way of using L2 regularization/weight decay with Adam,
                 # since that will interact with the m and v parameters in strange ways.
