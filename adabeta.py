@@ -34,12 +34,12 @@ class AdamW(Optimizer):
         self,
         params: Iterable[nn.parameter.Parameter],
         lr: float = 1e-3,
-        betas: Tuple[float, float] = (0.999, 0.9, 0.999),
+        betas: Tuple[float, float] = [0.9, 0.999],
         eps: float = 1e-6,
         weight_decay: float = 0.0,
         correct_bias: bool = True,
         no_deprecation_warning: bool = False,
-        momentum_in_update: str = "norm"
+        lambdas: list = [1e-3, 1e-3]
     ):
         if not no_deprecation_warning:
             warnings.warn(
@@ -58,7 +58,7 @@ class AdamW(Optimizer):
             raise ValueError(f"Invalid epsilon value: {eps} - should be >= 0.0")
         defaults = {"lr": lr, "betas": betas, "eps": eps, "weight_decay": weight_decay, "correct_bias": correct_bias}
         super().__init__(params, defaults)
-        self.momentum_in_update = momentum_in_update
+        self.lambdas = lambdas
 
     @torch.no_grad()
     def step(self, closure: Callable = None):
@@ -87,39 +87,33 @@ class AdamW(Optimizer):
 
                 # State initialization
                 if "exp_avg" not in state:
-                    state["momentum"] = torch.zeros_like(grad)
                     # Exponential moving average of gradient values
                     state["exp_avg"] = torch.zeros_like(grad)
                     # Exponential moving average of squared gradient values
                     state["exp_avg_sq"] = torch.zeros_like(grad)
 
-                momentum, exp_avg, exp_avg_sq = state["momentum"], state["exp_avg"], state["exp_avg_sq"]
-                beta0, beta1, beta2 = group["betas"]
+                exp_avg, exp_avg_sq = state["exp_avg"], state["exp_avg_sq"]
+                beta1, beta2 = group["betas"]
 
                 state["step"] += 1
 
                 # Decay the first and second moment running average coefficient
                 # In-place operations to update the averages at the same time
-                momentum = momentum/(1 - beta0**state["step"])
-                grad_r = grad - momentum
-                momentum.mul_(beta0).add_(grad, alpha=(1.0 - beta0))
-                
-                exp_avg.mul_(beta1).add_(grad_r, alpha=(1.0 - beta1))
-                exp_avg_sq.mul_(beta2).addcmul_(grad_r, grad_r, value=1.0 - beta2)
+                exp_avg.mul_(beta1).add_(grad, alpha=(1.0 - beta1))
+                exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1.0 - beta2)
                 denom = exp_avg_sq.sqrt().add_(group["eps"])
 
                 step_size = group["lr"]
 
+                if group["correct_bias"]:  # No bias correction for Bert
+                    bias_correction1 = 1.0 - beta1 ** state["step"]
+                    bias_correction2 = 1.0 - beta2 ** state["step"]
+                    step_size = step_size * math.sqrt(bias_correction2) / bias_correction1
+ 
                 # compute norm gradient
-                norm_grad_r = exp_avg / denom
-                if self.momentum_in_update == "norm":
-                    p.add_(norm_grad_r + momentum/torch.norm(momentum), alpha=-step_size)
-                elif self.momentum_in_update == "sign":
-                    p.add_(norm_grad_r + torch.sign(momentum), alpha=-step_size)
-                elif self.momentum_in_update == "softsign":
-                    p.add_(norm_grad_r + torch.nn.functional.softsign(momentum), alpha=-step_size)
-                else:
-                    raise NotImplementedError
+                norm_grad = exp_avg / denom
+                p.add_(norm_grad, alpha=-step_size)
+                group["betas"][0] -= - (self.lambdas[0] * grad * step_size / denom / (1.0 - beta1 ** state["step"])**2 * ((state["step"] * beta1**(state["step"] - 1) * grad) + (exp_avg - grad) * (1 + (state["step"] - 1) * beta1**state["step"]) / beta1)).sum().item()
                 # Just adding the square of the weights to the loss function is *not*
                 # the correct way of using L2 regularization/weight decay with Adam,
                 # since that will interact with the m and v parameters in strange ways.

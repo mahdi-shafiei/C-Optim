@@ -27,6 +27,7 @@ from peft_pretraining.modeling_llama import LlamaForCausalLM
 
 import bitsandbytes as bnb
 from adabeta import AdamW as AdaBeta
+from adamw_wo_correction import AdamW as AdamW_wo_Correction
 
 transformers.logging.set_verbosity_error()
 
@@ -62,13 +63,13 @@ def parse_args(args):
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--name", type=str, default="test")
     parser.add_argument("--grad_clipping", type=float, default=0.0)   
-    parser.add_argument("--betas", type=float, default=[0.999, 0.9, 0.999], nargs='+')
-    parser.add_argument("--momentum_in_update", default="norm", type=str)
     # beta1 for adafactor
     parser.add_argument("--beta1", type=float, default=0.0)
-
+    
     # disable ddp, single_gpu
     parser.add_argument("--single_gpu", default=False, action="store_true")
+    # adabeta arguments
+    parser.add_argument("--lambdas", type=float, default=[1e-3, 1e-3], nargs='+')
     args = parser.parse_args(args)
 
     args = args_utils.check_args_torchrun_main(args)
@@ -265,8 +266,10 @@ def main(args):
     layer_wise_flag = False
     if args.optimizer.lower() == "adamw":
         optimizer = torch.optim.AdamW(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
+    elif args.optimizer.lower() == "adamw_wo_correction":
+        optimizer = AdamW_wo_Correction(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
     elif args.optimizer.lower() == "adabeta":
-        optimizer = AdaBeta(trainable_params, lr=args.lr, weight_decay=args.weight_decay, betas = args.betas, momentum_in_update = args.momentum_in_update)
+        optimizer = AdaBeta(trainable_params, lr=args.lr, weight_decay=args.weight_decay, lambdas = args.lambdas)
     # implement sgd
     elif args.optimizer.lower() == "sgd":
         optimizer = torch.optim.SGD(trainable_params, lr=args.lr, weight_decay=args.weight_decay, momentum=args.beta1)
