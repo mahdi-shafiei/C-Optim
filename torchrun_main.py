@@ -69,7 +69,8 @@ def parse_args(args):
     # disable ddp, single_gpu
     parser.add_argument("--single_gpu", default=False, action="store_true")
     # adabeta arguments
-    parser.add_argument("--lambdas", type=float, default=[1e-3, 1e-3], nargs='+')
+    parser.add_argument("--lambdas", type=float, default=[1e-3, 0.0], nargs='+')
+    parser.add_argument("--adabeta_rule", type=str, default="global")
     args = parser.parse_args(args)
 
     args = args_utils.check_args_torchrun_main(args)
@@ -269,7 +270,7 @@ def main(args):
     elif args.optimizer.lower() == "adamw_wo_correction":
         optimizer = AdamW_wo_Correction(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
     elif args.optimizer.lower() == "adabeta":
-        optimizer = AdaBeta(trainable_params, lr=args.lr, weight_decay=args.weight_decay, lambdas = args.lambdas)
+        optimizer = AdaBeta(trainable_params, lr=args.lr, weight_decay=args.weight_decay, lambdas = args.lambdas, adabeta_rule = args.adabeta_rule)
     # implement sgd
     elif args.optimizer.lower() == "sgd":
         optimizer = torch.optim.SGD(trainable_params, lr=args.lr, weight_decay=args.weight_decay, momentum=args.beta1)

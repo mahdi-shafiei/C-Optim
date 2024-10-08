@@ -40,7 +40,8 @@ class AdamW(Optimizer):
         weight_decay: float = 0.0,
         correct_bias: bool = True,
         no_deprecation_warning: bool = False,
-        lambdas: list = [1e-3, 1e-3]
+        lambdas: list = [1e-3, 0.0],
+        adabeta_rule: str = "global"
     ):
         if not no_deprecation_warning:
             warnings.warn(
@@ -66,6 +67,7 @@ class AdamW(Optimizer):
                 self.param_count+=p.numel()
         self.bias_correction1 = 1
         self.bias_correction2 = 1
+        self.adabeta_rule = adabeta_rule
 
     @torch.no_grad()
     def step(self, closure: Callable = None):
@@ -79,8 +81,9 @@ class AdamW(Optimizer):
         if closure is not None:
             loss = closure()
         
-        tmp_betas = [state["betas"][0], state["betas"][1]]
         for group in self.param_groups:
+            if self.adabeta_rule == "global": 
+                tmp_betas = [group["betas"][0], group["betas"][1]]
             for i, p in enumerate(group["params"]):
                 if p.grad is None:
                     continue
@@ -99,6 +102,11 @@ class AdamW(Optimizer):
                     state["exp_avg"] = torch.zeros_like(grad)
                     # Exponential moving average of squared gradient values
                     state["exp_avg_sq"] = torch.zeros_like(grad)
+                    if self.adabeta_rule == "module":
+                        state["betas"] = [group["betas"][0], group["betas"][1]]
+                
+                if self.adabeta_rule == "module":
+                    tmp_betas = [state["betas"][0], state["betas"][1]]
 
                 exp_avg, exp_avg_sq = state["exp_avg"], state["exp_avg_sq"]
                 beta1, beta2 = group["betas"]
@@ -121,7 +129,25 @@ class AdamW(Optimizer):
                 # compute norm gradient
                 norm_grad = exp_avg / denom
                 p.add_(norm_grad, alpha=-step_size)
-                tmp_betas[0] -= - (self.lambdas[0] * grad * step_size / denom / (1.0 - beta1 ** state["step"])**2 * ((state["step"] * beta1**(state["step"] - 1) * grad) + (exp_avg - grad) * (1 + (state["step"] - 1) * beta1**state["step"]) / beta1)).sum().item() / self.param_count
+                if self.lambdas[0] > 0:
+                    beta1_update = - (self.lambdas[0] * grad * step_size / denom / (1.0 - beta1 ** state["step"])**2 * ((state["step"] * beta1**(state["step"] - 1) * grad) + (exp_avg - grad) * (1 + (state["step"] - 1) * beta1**state["step"]) / beta1)).sum().item()
+                    if self.adabeta_rule == "global":
+                        beta1_update = beta1_update / self.param_count
+                    elif self.adabeta_rule == "module":
+                        beta1_update = beta1_update / p.numel()
+                    else:
+                        raise NotImplementedError
+                    tmp_betas[0] -= beta1_update
+                if self.lambdas[1] > 0:
+                    beta2_update = (self.lambdas[1] * grad * step_size * 0.5 / (exp_avg_sq.sqrt() * denom ** 2) / (1.0 - beta2 ** state["step"])**2 * ((state["step"] * beta2**(state["step"] - 1) * grad**2) + (exp_avg - grad**2) * (1 + (state["step"] - 1) * beta2**state["step"]) / beta2)).sum().item()
+                    if self.adabeta_rule == "global":
+                        beta2_update = beta2_update / self.param_count
+                    elif self.adabeta_rule == "module":
+                        beta2_update = beta2_update / p.numel()
+                    else:
+                        raise NotImplementedError
+                    tmp_betas[1] -= beta2_update 
+
                 tmp_betas[0] = np.clip(tmp_betas[0], 1e-8, 1)
                 tmp_betas[1] = np.clip(tmp_betas[1], 1e-8, 1)
                 # Just adding the square of the weights to the loss function is *not*
@@ -134,5 +160,8 @@ class AdamW(Optimizer):
                 # Add weight decay at the end (fixed version)
                 if group["weight_decay"] > 0.0:
                     p.add_(p, alpha=(-group["lr"] * group["weight_decay"]))
-        state["betas"] = tmp_betas
+                if self.adabeta_rule == "module":
+                    state["betas"] = tmp_betas
+            if self.adabeta_rule == "global":
+                group["betas"] = tmp_betas
         return loss
