@@ -5,9 +5,10 @@ from typing import Callable, Iterable, Tuple
 
 import torch
 from torch import nn
-import torch.nn.functional as F
 from torch.optim import Optimizer
-import numpy as np
+
+from transformers.utils.versions import require_version
+
 
 class AdamW(Optimizer):
     """
@@ -35,13 +36,11 @@ class AdamW(Optimizer):
         self,
         params: Iterable[nn.parameter.Parameter],
         lr: float = 1e-3,
-        betas: Tuple[float, float] = [0.9, 0.999],
+        betas: Tuple[float, float] = (0.9, 0.999),
         eps: float = 1e-6,
         weight_decay: float = 0.0,
         correct_bias: bool = True,
         no_deprecation_warning: bool = False,
-        lambdas: list = [1e-3, 0.0],
-        adabeta_rule: str = "global"
     ):
         if not no_deprecation_warning:
             warnings.warn(
@@ -50,6 +49,7 @@ class AdamW(Optimizer):
                 " warning",
                 FutureWarning,
             )
+        require_version("torch>=1.5.0")  # add_ with alpha
         if lr < 0.0:
             raise ValueError(f"Invalid learning rate: {lr} - should be >= 0.0")
         if not 0.0 <= betas[0] < 1.0:
@@ -60,14 +60,7 @@ class AdamW(Optimizer):
             raise ValueError(f"Invalid epsilon value: {eps} - should be >= 0.0")
         defaults = {"lr": lr, "betas": betas, "eps": eps, "weight_decay": weight_decay, "correct_bias": correct_bias}
         super().__init__(params, defaults)
-        self.lambdas = lambdas
-        self.param_count = 0
-        for group in self.param_groups:
-            for i, p in enumerate(group["params"]):
-                self.param_count+=p.numel()
-        self.bias_correction1 = 1
-        self.bias_correction2 = 1
-        self.adabeta_rule = adabeta_rule
+        self.init_lr = lr
 
     @torch.no_grad()
     def step(self, closure: Callable = None):
@@ -80,17 +73,12 @@ class AdamW(Optimizer):
         loss = None
         if closure is not None:
             loss = closure()
-        
+
         for group in self.param_groups:
-            if self.adabeta_rule == "global": 
-                tmp_betas = [0, 0]
             for i, p in enumerate(group["params"]):
                 if p.grad is None:
                     continue
                 grad = p.grad
-                if grad.is_sparse:
-                    raise RuntimeError("Adam does not support sparse gradients, please consider SparseAdam instead")
-
                 state = self.state[p]
                 
                 if "step" not in state:
@@ -102,11 +90,6 @@ class AdamW(Optimizer):
                     state["exp_avg"] = torch.zeros_like(grad)
                     # Exponential moving average of squared gradient values
                     state["exp_avg_sq"] = torch.zeros_like(grad)
-                    if self.adabeta_rule == "module":
-                        state["betas"] = [group["betas"][0], group["betas"][1]]
-                
-                if self.adabeta_rule == "module":
-                    tmp_betas = [0, 0]
 
                 exp_avg, exp_avg_sq = state["exp_avg"], state["exp_avg_sq"]
                 beta1, beta2 = group["betas"]
@@ -115,27 +98,21 @@ class AdamW(Optimizer):
 
                 # Decay the first and second moment running average coefficient
                 # In-place operations to update the averages at the same time
-                exp_avg.mul_(beta1).add_(grad, alpha=(1.0 - beta1))
+                sign = torch.sign(exp_avg * grad).to(grad.dtype)
+                exp_avg.mul_(beta1).add_(sign * grad, alpha=(1.0 - beta1))
                 exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1.0 - beta2)
                 denom = exp_avg_sq.sqrt().add_(group["eps"])
 
                 step_size = group["lr"]
-
                 if group["correct_bias"]:  # No bias correction for Bert
-                    self.bias_correction1 *= beta1
-                    self.bias_correction2 *= beta2
-                    step_size = step_size * math.sqrt(1 - self.bias_correction2) / (1 - self.bias_correction1)
- 
-                # compute norm gradient
-                norm_grad = exp_avg / denom
-                p.add_(norm_grad, alpha=-step_size)
-                if self.lambdas[0] > 0:
-                    beta1_update = - (self.lambdas[0] * grad * step_size / denom / (1.0 - beta1 ** state["step"])**2 * ((state["step"] * beta1**(state["step"] - 1) * grad) + (exp_avg - grad) * (1 + (state["step"] - 1) * beta1**state["step"]) / beta1)).sum().item()
-                    tmp_betas[0] -= beta1_update
-                if self.lambdas[1] > 0:
-                    beta2_update = (self.lambdas[1] * grad * step_size * 0.5 / (exp_avg_sq.sqrt() * denom ** 2) / (1.0 - beta2 ** state["step"])**2 * ((state["step"] * beta2**(state["step"] - 1) * grad**2) + (exp_avg - grad**2) * (1 + (state["step"] - 1) * beta2**state["step"]) / beta2)).sum().item()
-                    tmp_betas[1] -= beta2_update 
+                    bias_correction1 = 1.0 - beta1 ** state["step"]
+                    bias_correction2 = 1.0 - beta2 ** state["step"]
+                    step_size = step_size * math.sqrt(bias_correction2) / bias_correction1
 
+                # compute norm gradient
+                norm_grad = sign * exp_avg / denom
+                p.add_(norm_grad, alpha=-step_size)
+                
                 # Just adding the square of the weights to the loss function is *not*
                 # the correct way of using L2 regularization/weight decay with Adam,
                 # since that will interact with the m and v parameters in strange ways.
@@ -146,8 +123,5 @@ class AdamW(Optimizer):
                 # Add weight decay at the end (fixed version)
                 if group["weight_decay"] > 0.0:
                     p.add_(p, alpha=(-group["lr"] * group["weight_decay"]))
-                if self.adabeta_rule == "module":
-                    state["betas"] = [np.clip(state["betas"][0] + tmp_betas[0] / p.numel(), 1e-8, 1), np.clip(state["betas"][1] + tmp_betas[1] / p.numel(), 1e-8, 1)]
-            if self.adabeta_rule == "global":
-                group["betas"] = [np.clip(group["betas"][0] + tmp_betas[0] / self.param_count, 1e-8, 1), np.clip(group["betas"][1] + tmp_betas[1] / self.param_count, 1e-8, 1)]
+
         return loss

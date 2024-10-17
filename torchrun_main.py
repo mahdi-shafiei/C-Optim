@@ -28,6 +28,9 @@ from peft_pretraining.modeling_llama import LlamaForCausalLM
 import bitsandbytes as bnb
 from adabeta import AdamW as AdaBeta
 from adamw_wo_correction import AdamW as AdamW_wo_Correction
+from adamw_slow import AdamW as AdamW_Slow
+from adalr import AdaLR
+from adamw_crazy import AdamW as AdamW_Crazy
 
 transformers.logging.set_verbosity_error()
 
@@ -269,6 +272,12 @@ def main(args):
         optimizer = torch.optim.AdamW(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
     elif args.optimizer.lower() == "adamw_wo_correction":
         optimizer = AdamW_wo_Correction(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
+    elif args.optimizer.lower() == "adamw_slow":
+        optimizer = AdamW_Slow(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
+    elif args.optimizer.lower() == "adamw_crazy":
+        optimizer = AdamW_Crazy(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
+    elif args.optimizer.lower() == "adalr":
+        optimizer = AdaLR(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
     elif args.optimizer.lower() == "adabeta":
         optimizer = AdaBeta(trainable_params, lr=args.lr, weight_decay=args.weight_decay, lambdas = args.lambdas, adabeta_rule = args.adabeta_rule)
     # implement sgd
@@ -429,6 +438,7 @@ def main(args):
                 "throughput_tokens": tokens_in_update / update_time,
                 "throughput_examples": args.total_batch_size / update_time,
                 "throughput_batches": batches_in_update / update_time,
+                "beta1": optimizer.param_groups[0]["betas"][0]
                 },
                 step=global_step,
             )
