@@ -26,11 +26,9 @@ from peft_pretraining.dataloader import PreprocessedIterableDataset
 from peft_pretraining.modeling_llama import LlamaForCausalLM
 
 import bitsandbytes as bnb
-from adabeta import AdamW as AdaBeta
-from adamw_wo_correction import AdamW as AdamW_wo_Correction
 from adamw_slow import AdamW as AdamW_Slow
-from adalr import AdaLR
-from adamw_crazy import AdamW as AdamW_Crazy
+from lion import Lion
+from lion_slow import Lion
 
 transformers.logging.set_verbosity_error()
 
@@ -71,9 +69,6 @@ def parse_args(args):
     
     # disable ddp, single_gpu
     parser.add_argument("--single_gpu", default=False, action="store_true")
-    # adabeta arguments
-    parser.add_argument("--lambdas", type=float, default=[1e-3, 0.0], nargs='+')
-    parser.add_argument("--adabeta_rule", type=str, default="global")
     args = parser.parse_args(args)
 
     args = args_utils.check_args_torchrun_main(args)
@@ -270,16 +265,8 @@ def main(args):
     layer_wise_flag = False
     if args.optimizer.lower() == "adamw":
         optimizer = torch.optim.AdamW(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
-    elif args.optimizer.lower() == "adamw_wo_correction":
-        optimizer = AdamW_wo_Correction(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
     elif args.optimizer.lower() == "adamw_slow":
         optimizer = AdamW_Slow(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
-    elif args.optimizer.lower() == "adamw_crazy":
-        optimizer = AdamW_Crazy(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
-    elif args.optimizer.lower() == "adalr":
-        optimizer = AdaLR(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
-    elif args.optimizer.lower() == "adabeta":
-        optimizer = AdaBeta(trainable_params, lr=args.lr, weight_decay=args.weight_decay, lambdas = args.lambdas, adabeta_rule = args.adabeta_rule)
     # implement sgd
     elif args.optimizer.lower() == "sgd":
         optimizer = torch.optim.SGD(trainable_params, lr=args.lr, weight_decay=args.weight_decay, momentum=args.beta1)
