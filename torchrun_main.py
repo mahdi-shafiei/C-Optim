@@ -28,7 +28,7 @@ from peft_pretraining.modeling_llama import LlamaForCausalLM
 import bitsandbytes as bnb
 from adamw_slow import AdamW as AdamW_Slow
 from lion import Lion
-from lion_slow import Lion
+from lion_slow import Lion as Lion_Slow
 
 transformers.logging.set_verbosity_error()
 
