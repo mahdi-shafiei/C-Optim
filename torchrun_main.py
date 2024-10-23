@@ -29,6 +29,7 @@ import bitsandbytes as bnb
 from adamw_slow import AdamW as AdamW_Slow
 from lion import Lion
 from lion_slow import Lion as Lion_Slow
+from adafactor_slow import Adafactor as Adafactor_Slow
 
 transformers.logging.set_verbosity_error()
 
@@ -285,8 +286,24 @@ def main(args):
             scale_parameter=False,
             warmup_init=False,
         )
+    elif args.optimizer.lower() == "adafactor_slow":
+        args.beta1 = None if args.beta1 == 0.0 else args.beta1
+        optimizer = Adafactor_Slow(
+            trainable_params,
+            lr=args.lr,
+            eps=(1e-30, 1e-3),
+            clip_threshold=1.0,
+            decay_rate=-0.8,
+            beta1=args.beta1,
+            weight_decay=args.weight_decay,
+            relative_step=False,
+            scale_parameter=False,
+            warmup_init=False,
+        )
     elif args.optimizer.lower() == "lion":
         optimizer = Lion(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
+    elif args.optimizer.lower() == "lion_slow":
+        optimizer = Lion_Slow(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
     else:
         raise ValueError(f"Optimizer {args.optimizer} not supported")
 
