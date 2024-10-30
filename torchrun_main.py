@@ -64,7 +64,11 @@ def parse_args(args):
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--name", type=str, default="test")
-    parser.add_argument("--grad_clipping", type=float, default=0.0)   
+    parser.add_argument("--grad_clipping", type=float, default=0.0)
+    
+    # betas for adamw
+    parser.add_argument('--betas', nargs='+', default = [0.9, 0.999], help = "betas for adamw", type=float)
+
     # beta1 for adafactor
     parser.add_argument("--beta1", type=float, default=0.0)
     
@@ -265,9 +269,9 @@ def main(args):
     
     layer_wise_flag = False
     if args.optimizer.lower() == "adamw":
-        optimizer = torch.optim.AdamW(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
+        optimizer = torch.optim.AdamW(trainable_params, lr=args.lr, weight_decay=args.weight_decay, betas = args.betas)
     elif args.optimizer.lower() == "adamw_slow":
-        optimizer = AdamW_Slow(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
+        optimizer = AdamW_Slow(trainable_params, lr=args.lr, weight_decay=args.weight_decay, betas = args.betas)
     # implement sgd
     elif args.optimizer.lower() == "sgd":
         optimizer = torch.optim.SGD(trainable_params, lr=args.lr, weight_decay=args.weight_decay, momentum=args.beta1)
