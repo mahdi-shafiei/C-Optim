@@ -26,10 +26,10 @@ from peft_pretraining.dataloader import PreprocessedIterableDataset
 from peft_pretraining.modeling_llama import LlamaForCausalLM
 
 import bitsandbytes as bnb
-from adamw_slow import AdamW as AdamW_Slow
+from c_adamw import AdamW as C_AdamW
 from lion import Lion
-from lion_slow import Lion as Lion_Slow
-from adafactor_slow import Adafactor as Adafactor_Slow
+from c_lion import Lion as C_Lion
+from c_adafactor import Adafactor as C_Adafactor
 
 transformers.logging.set_verbosity_error()
 
@@ -270,8 +270,8 @@ def main(args):
     layer_wise_flag = False
     if args.optimizer.lower() == "adamw":
         optimizer = torch.optim.AdamW(trainable_params, lr=args.lr, weight_decay=args.weight_decay, betas = args.betas)
-    elif args.optimizer.lower() == "adamw_slow":
-        optimizer = AdamW_Slow(trainable_params, lr=args.lr, weight_decay=args.weight_decay, betas = args.betas)
+    elif args.optimizer.lower() == "c_adamw":
+        optimizer = C_AdamW(trainable_params, lr=args.lr, weight_decay=args.weight_decay, betas = args.betas)
     # implement sgd
     elif args.optimizer.lower() == "sgd":
         optimizer = torch.optim.SGD(trainable_params, lr=args.lr, weight_decay=args.weight_decay, momentum=args.beta1)
@@ -290,9 +290,9 @@ def main(args):
             scale_parameter=False,
             warmup_init=False,
         )
-    elif args.optimizer.lower() == "adafactor_slow":
+    elif args.optimizer.lower() == "c_adafactor":
         args.beta1 = None if args.beta1 == 0.0 else args.beta1
-        optimizer = Adafactor_Slow(
+        optimizer = C_Adafactor(
             trainable_params,
             lr=args.lr,
             eps=(1e-30, 1e-3),
@@ -306,8 +306,8 @@ def main(args):
         )
     elif args.optimizer.lower() == "lion":
         optimizer = Lion(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
-    elif args.optimizer.lower() == "lion_slow":
-        optimizer = Lion_Slow(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
+    elif args.optimizer.lower() == "c_lion":
+        optimizer = C_Lion(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
     else:
         raise ValueError(f"Optimizer {args.optimizer} not supported")
 
