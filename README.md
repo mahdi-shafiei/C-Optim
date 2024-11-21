@@ -6,9 +6,12 @@ AdamW has been the default optimizer for transformer pretraining. For many years
 </div>
 
 ## Implementation
+Generic single line implementation for C-Optim
 <div align="center">
   <img src="images/c_optim_overview.png" alt="Image 2" style="width: 550px; margin: 0 auto;">
 </div>
+
+Pesudo Code for C-AdamW
 <div align="center">
   <img src="images/c_adamw.png" alt="Image 3" style="width: 550px; margin: 0 auto;">
 </div>
