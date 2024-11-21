@@ -1,5 +1,21 @@
-# Cautious Optimizer (C-Optiom)
-Cautious Update for momentum based methods
+# Cautious Optimizer (C-Optiom): Improving Training with One Line of Code
+AdamW has been the default optimizer for transformer pretraining. For many years, our community searches for faster and more stable optimizers with only constraint positive outcomes. In this work, we propose a single-line modification in Pytorch to any momentum-based optimizer, which we rename Cautious Optimizer, e.g. C-AdamW and C-Lion. Our theoretical result shows that this modification preserves Adam’s Hamiltonian function and it does not break the convergence guarantee under the Lyapunov analysis. In addition, a whole new family of optimizers is revealed by our theoretical insight. Among them, we pick the simplest one for empirical experiments, showing speed-up on Llama and MAE pretraining up to 1.47×.
+
+<div align="center">
+  <img src="images/c_optim_results.png" alt="Image 1" style="width: 550px; margin: 0 auto;">
+</div>
+
+## Implementation
+<div align="center">
+  <img src="images/c_optim_overview.png" alt="Image 1" style="width: 550px; margin: 0 auto;">
+</div>
+<div align="center">
+  <img src="images/c_adamw.png" alt="Image 1" style="width: 550px; margin: 0 auto;">
+</div>
+
+## Motivation
+
+## Usage
 ```
 torchrun --standalone --nproc_per_node 1 torchrun_main.py --model_config configs/llama_60m.json --lr 0.001 --batch_size 16 --total_batch_size 512 --activation_checkpointing --num_training_steps 10000 --warmup_steps 1000 --weight_decay 0 --grad_clipping 1.0 --dtype bfloat16 --eval_every 1000 --single_gpu --optimizer c-adamw --max_length 1024
 ```
