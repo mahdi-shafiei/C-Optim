@@ -83,7 +83,7 @@ torchrun --standalone --nproc_per_node 4 run_mae.py \
       title={Cautious Optimizers: Improving Training with One Line of Code}, 
       author={Kaizhao Liang and Lizhang Chen and Bo Liu and Qiang Liu},
       year={2024},
-      eprint={},
+      eprint={https://arxiv.org/abs/2411.16085},
       archivePrefix={arXiv},
       primaryClass={cs.LG}
 }
