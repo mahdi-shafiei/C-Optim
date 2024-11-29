@@ -78,6 +78,7 @@ class AdamW(Optimizer):
             for i, p in enumerate(group["params"]):
                 if p.grad is None:
                     continue
+                    
                 grad = p.grad
                 state = self.state[p]
                 
@@ -96,6 +97,10 @@ class AdamW(Optimizer):
 
                 state["step"] += 1
 
+                # apply weight decay
+                if group["weight_decay"] > 0.0:
+                    p.add_(p, alpha=(-group["lr"] * group["weight_decay"]))
+                
                 # Decay the first and second moment running average coefficient
                 # In-place operations to update the averages at the same time
                 exp_avg.mul_(beta1).add_(grad, alpha=(1.0 - beta1))
@@ -113,16 +118,4 @@ class AdamW(Optimizer):
                 mask = mask * (mask.numel() / (mask.sum() + 1))
                 norm_grad = (exp_avg * mask) / denom
                 p.add_(norm_grad, alpha=-step_size)
-
-                # Just adding the square of the weights to the loss function is *not*
-                # the correct way of using L2 regularization/weight decay with Adam,
-                # since that will interact with the m and v parameters in strange ways.
-                #
-                # Instead we want to decay the weights in a manner that doesn't interact
-                # with the m/v parameters. This is equivalent to adding the square
-                # of the weights to the loss with plain (non-momentum) SGD.
-                # Add weight decay at the end (fixed version)
-                if group["weight_decay"] > 0.0:
-                    p.add_(p, alpha=(-group["lr"] * group["weight_decay"]))
-
         return loss
