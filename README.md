@@ -22,8 +22,9 @@ Our theoretical findings reveal that this modification preserves Adam’s Hamilt
 
 ### Empirical Results
 <div align="center">
-  <img src="images/c_optim_results.png" alt="Image 2" style="width: 550px; margin: 0 auto;">
+  <img src="images/c_optim_results.png" alt="Image 2" style="width: 650px; margin: 0 auto;">
 </div>
+
 ---
 
 ## 📦 Installation
