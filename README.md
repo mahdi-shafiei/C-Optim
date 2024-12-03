@@ -8,6 +8,7 @@ Our theoretical findings reveal that this modification preserves Adam’s Hamilt
 ---
 
 ## 🌟 News
+- **[2024-12-03]** 🤗🤗🤗 Caution implemented in [huggingface/pytorch-image-models](https://github.com/huggingface/pytorch-image-models/blob/main/timm/optim/adamw.py#L132-L136).
 - **[2024-11-24]** Pre-release paper available on arXiv: [Cautious Optimizers: Improving Training with One Line of Code](https://arxiv.org/abs/2411.16085).
 - **[2024-11-24]** Official implementation of C-Optim released! Experiment with C-AdamW and C-Lion today.
 
