@@ -1,7 +1,11 @@
 ---
 
 # Cautious Optimizer (C-Optiom): Improving Training with One Line of Code
+AdamW has long been the go-to optimizer for transformer pretraining. For years, the research community has been searching for faster and more stable optimizers, with a focus on achieving only positive outcomes. In this work, we introduce a simple, single-line modification in PyTorch for any momentum-based optimizer. This modification, termed **Cautious Optimizer** (e.g., **C-AdamW** and **C-Lion**), opens the door to improved training performance. Our theoretical findings reveal that this modification preserves Adam’s Hamiltonian function and retains its convergence guarantees under Lyapunov analysis. Additionally, a new family of optimizers emerges from this insight. Among these, we select the simplest for empirical experiments, achieving up to **1.47x speed-up** on **Llama** and **MAE pretraining**.
 
+<div align="center">
+  <img src="images/c_optim_results.png" alt="Image 1" style="width: 550px; margin: 0 auto;">
+</div>
 ---
 
 ## 🌟 News
