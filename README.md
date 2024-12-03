@@ -1,31 +1,48 @@
+---
+
 # Cautious Optimizer (C-Optiom): Improving Training with One Line of Code
-AdamW has been the default optimizer for transformer pretraining. For many years, our community searches for faster and more stable optimizers with only constraint positive outcomes. In this work, we propose a single-line modification in Pytorch to any momentum-based optimizer, which we rename Cautious Optimizer, e.g. C-AdamW and C-Lion. Our theoretical result shows that this modification preserves Adam’s Hamiltonian function and it does not break the convergence guarantee under the Lyapunov analysis. In addition, a whole new family of optimizers is revealed by our theoretical insight. Among them, we pick the simplest one for empirical experiments, showing speed-up on Llama and MAE pretraining up to 1.47×.
+
+AdamW has long been the go-to optimizer for transformer pretraining. For years, the research community has been searching for faster and more stable optimizers, with a focus on achieving only positive outcomes. In this work, we introduce a simple, single-line modification in PyTorch for any momentum-based optimizer. This modification, termed **Cautious Optimizer** (e.g., **C-AdamW** and **C-Lion**), opens the door to improved training performance.
+
+Our theoretical findings reveal that this modification preserves Adam’s Hamiltonian function and retains its convergence guarantees under Lyapunov analysis. Additionally, a new family of optimizers emerges from this insight. Among these, we select the simplest for empirical experiments, achieving up to **1.47× speed-up** on **Llama** and **MAE pretraining**.
 
 <div align="center">
   <img src="images/c_optim_results.png" alt="Image 1" style="width: 550px; margin: 0 auto;">
 </div>
 
-## Implementation
-### Generic single line implementation for C-Optim
+---
+
+## 🌟 News
+- **[2024-11-24]** Pre-release paper available on arXiv: [Cautious Optimizers: Improving Training with One Line of Code](https://arxiv.org/abs/2411.16085).
+- **[2024-11-24]** Official implementation of C-Optim released! Experiment with C-AdamW and C-Lion today.
+
+---
+
+## 🚀 Implementation
+
+### Generic Single-Line Implementation for C-Optim
 <div align="center">
   <img src="images/c_optim_overview.png" alt="Image 2" style="width: 550px; margin: 0 auto;">
 </div>
 
-### Pesudo Code for C-AdamW
+### Pseudo Code for C-AdamW
 <div align="center">
   <img src="images/c_adamw.png" alt="Image 3" style="width: 550px; margin: 0 auto;">
 </div>
 
-## Installation
-### Install experiment dependencies
+---
 
+## 📦 Installation
+### Install Experiment Dependencies
 ```bash
 pip install -r requirements.txt
 ```
 
-## Usage
-Example command for pretraining llama on C4
-```
+---
+
+## 🛠️ Usage
+### Pretraining Llama on C4
+```bash
 torchrun --standalone --nproc_per_node 1 torchrun_main.py \
          --model_config configs/llama_60m.json \
          --lr 0.001 \
@@ -43,8 +60,8 @@ torchrun --standalone --nproc_per_node 1 torchrun_main.py \
          --max_length 1024
 ```
 
-Example command for pretraining MAE on ImageNet 1K for 50 epochs
-```
+### Pretraining MAE on ImageNet 1K (50 Epochs)
+```bash
 torchrun --standalone --nproc_per_node 4 run_mae.py \
     --dataset_name ILSVRC/imagenet-1k \
     --output_dir ./vit-mae-c \
@@ -72,7 +89,10 @@ torchrun --standalone --nproc_per_node 4 run_mae.py \
     --trust_remote_code \
     --gradient_accumulation_steps 4
 ```
-## Citation
+
+---
+
+## 📖 Citation
 ```bibtex
 @misc{liang2024online,
       title={Cautious Optimizers: Improving Training with One Line of Code}, 
@@ -83,3 +103,5 @@ torchrun --standalone --nproc_per_node 4 run_mae.py \
       primaryClass={cs.LG}
 }
 ```
+
+--- 
