@@ -17,9 +17,13 @@ Our theoretical findings reveal that this modification preserves Adam’s Hamilt
 
 ### Generic Single-Line Implementation for C-Optim
 <div align="center">
-  <img src="images/c_optim_overview.png" alt="Image 2" style="width: 550px; margin: 0 auto;">
+  <img src="images/c_optim_overview.png" alt="Image 1" style="width: 550px; margin: 0 auto;">
 </div>
 
+### Empirical Results
+<div align="center">
+  <img src="images/c_optim_results.png" alt="Image 2" style="width: 550px; margin: 0 auto;">
+</div>
 ---
 
 ## 📦 Installation
