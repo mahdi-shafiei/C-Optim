@@ -16,11 +16,6 @@ AdamW has been the default optimizer for transformer pretraining. For many years
   <img src="images/c_adamw.png" alt="Image 3" style="width: 550px; margin: 0 auto;">
 </div>
 
-## Motivation
-<div align="center">
-  <img src="images/c_optim_toy.png" alt="Image 4" style="width: 550px; margin: 0 auto;">
-</div>
-
 ## Installation
 ### Install experiment dependencies
 
