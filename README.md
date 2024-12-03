@@ -25,11 +25,6 @@ Our theoretical findings reveal that this modification preserves Adam’s Hamilt
   <img src="images/c_optim_overview.png" alt="Image 2" style="width: 550px; margin: 0 auto;">
 </div>
 
-### Pseudo Code for C-AdamW
-<div align="center">
-  <img src="images/c_adamw.png" alt="Image 3" style="width: 550px; margin: 0 auto;">
-</div>
-
 ---
 
 ## 📦 Installation
