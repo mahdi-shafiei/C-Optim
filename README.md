@@ -87,7 +87,16 @@ torchrun --standalone --nproc_per_node 4 run_mae.py \
     --trust_remote_code \
     --gradient_accumulation_steps 4
 ```
-
+### Post Training Qwen2.5
+```
+torchrun \
+    --rdzv_id=$JOB_ID \
+    --rdzv-backend=c10d \
+    --nnodes=1:8 \
+    --nproc-per-node=1 \
+    --rdzv_endpoint=$MASTER_ADDR:$MASTER_PORT \
+    post_training.py --model "Qwen/Qwen2.5-1.5B-Instruct" --output_dir $SCRATCH/cautious_baseline_1.5b/ --per_device_train_batch_size 1 --gradient_accumulation_steps 2 --max_length 8192
+```
 ---
 
 ## 📖 Citation
