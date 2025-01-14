@@ -24,10 +24,14 @@ Our theoretical findings reveal that this modification preserves Adam’s Hamilt
 </div>
 
 ### Empirical Results
+
 <div align="center">
   <img src="images/c_optim_results.png" alt="Image 2" style="width: 650px; margin: 0 auto;">
 </div>
 
+<div align="center">
+  <img src="images/c_adamw_post_training.png" alt="Image 3" style="width: 650px; margin: 0 auto;">
+</div>
 ---
 
 ## 📦 Installation
@@ -95,7 +99,12 @@ torchrun \
     --nnodes=1:8 \
     --nproc-per-node=1 \
     --rdzv_endpoint=$MASTER_ADDR:$MASTER_PORT \
-    post_training.py --model "Qwen/Qwen2.5-1.5B-Instruct" --output_dir $SCRATCH/cautious_baseline_1.5b/ --per_device_train_batch_size 1 --gradient_accumulation_steps 2 --max_length 8192
+    post_training.py --model "Qwen/Qwen2.5-1.5B-Instruct" \
+                     --output_dir cautious_1.5b \
+                     --per_device_train_batch_size 1 \
+                     --gradient_accumulation_steps 2 \
+                     --max_length 8192 \
+                     --cautious
 ```
 ---
 
