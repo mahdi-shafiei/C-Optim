@@ -33,6 +33,7 @@ Our theoretical findings reveal that this modification preserves Adam’s Hamilt
 <div align="center">
   <img src="images/c_adamw_post_training.png" alt="Image 3" style="width: 650px; margin: 0 auto;">
 </div>
+
 ---
 
 ## 📦 Installation
