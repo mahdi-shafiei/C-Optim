@@ -23,12 +23,13 @@ Our theoretical findings reveal that this modification preserves Adam’s Hamilt
   <img src="images/c_optim_overview.png" alt="Image 1" style="width: 550px; margin: 0 auto;">
 </div>
 
-### Empirical Results
+### Pretraining Results
 
 <div align="center">
   <img src="images/c_optim_results.png" alt="Image 2" style="width: 650px; margin: 0 auto;">
 </div>
 
+### Post Training Results
 <div align="center">
   <img src="images/c_adamw_post_training.png" alt="Image 3" style="width: 650px; margin: 0 auto;">
 </div>
