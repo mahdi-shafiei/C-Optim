@@ -115,7 +115,8 @@ class AdamW(Optimizer):
 
                 # compute norm gradient
                 mask = (exp_avg * grad > 0).to(grad.dtype)
-                mask = mask * (mask.numel() / (mask.sum() + 1))
+                # mask = mask * (mask.numel() / (mask.sum() + 1)) ## original implementation, leaving it here for record
+                mask.div_(mask.mean().clamp_(min=1e-3)) # https://huggingface.co/rwightman/timm-optim-caution found this implementation is more favoarable in many cases
                 norm_grad = (exp_avg * mask) / denom
                 p.add_(norm_grad, alpha=-step_size)
         return loss
