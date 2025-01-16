@@ -154,6 +154,9 @@ class CustomTrainingArguments(TrainingArguments):
     custom_optim: str = field(
         default="adamw_torch", metadata={"help": "choice of optimizer"}
     )
+    num_gpus: int = field(
+        default=8, metadata={"help": "Number of GPUs used"}
+    )
 
 
 def collate_fn(examples):
@@ -348,7 +351,7 @@ def main():
         training_args.learning_rate = training_args.base_learning_rate * total_train_batch_size / 256
 
     # Initialize our trainer
-    num_training_steps = len(ds["train"]) * training_args.num_train_epochs
+    num_training_steps = len(ds["train"]) // training_args.per_device_train_batch_size // training_args.num_gpus // training_args.gradient_accumulation_steps * training_args.num_train_epochs
     if training_args.custom_optim == "c_adamw":
         optim = C_AdamW(model.parameters(), betas = (0.9, 0.95), weight_decay= training_args.weight_decay, lr = training_args.learning_rate)
     else:
