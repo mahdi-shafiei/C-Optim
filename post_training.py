@@ -21,6 +21,7 @@ parser.add_argument("--gradient_checkpointing", action="store_true", default=Fal
 parser.add_argument("--resume_from_checkpoint", action="store_true", default=False)
 parser.add_argument("--lora", action="store_true")
 parser.add_argument("--cautious", action="store_true")
+parser.add_argument("--num_gpus", default = 8, type=int)
 args = parser.parse_args()
 
 # qwq_dataset = load_dataset("amphora/QwQ-LongCoT-130K-2", split = "train")
@@ -72,7 +73,7 @@ response_template = "<|im_start|>assistant\n"
 
 collator = DataCollatorForCompletionOnlyLM(response_template, tokenizer=tokenizer)
 
-num_training_steps = train_size // args.per_device_train_batch_size // 8 // args.gradient_accumulation_steps # hardcode for 8 dp
+num_training_steps = train_size // args.per_device_train_batch_size // args.num_gpus // args.gradient_accumulation_steps # hardcode for 8 dp
 num_warmup_steps = int(0.1 * num_training_steps)
 if args.cautious:
     optim = CAdamW(model.parameters(), lr=5e-5, weight_decay = 0.01, betas = (0.9, 0.95))
