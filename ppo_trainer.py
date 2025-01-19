@@ -90,7 +90,7 @@ def make_step_rewards(logits, token_masks, step_lengths, reduce = False):
         else:
             scores_res = []
             for step_i, l in enumerate(step_lengths):
-                scores_res+=[positive_probs[step_i] for _ in range(l)]
+                scores_res+=[positive_probs[step_i]/l for _ in range(l)] # evenly distributing step rewards to each token of the step
             scores_res = torch.stack(scores_res)
             all_scores_res.append(scores_res)
     return all_scores_res
@@ -585,7 +585,10 @@ class PPOTrainer(Trainer):
                 # Completions not passing that filter will receive a lower score.
                 contain_eos_token = torch.any(postprocessed_responses == self.processing_class.eos_token_id, dim=-1)
                 if self.args.missing_eos_penalty is not None:
-                    scores[~contain_eos_token] -= self.args.missing_eos_penalty
+                    if args.prm:
+                        scores[~contain_eos_token] -= self.args.missing_eos_penalty / args.response_length
+                    else:
+                        scores[~contain_eos_token] -= self.args.missing_eos_penalty
                 # accelerator.print(f"{scores=}, {(contain_eos_token.sum() / len(contain_eos_token))=}")
 
                 # be very careful with `padding_mask_p1`; see https://excalidraw.com/#json=LWnzG4w2k5DjF_EOL_xPt,e2w3a-hFJ_gX5vOfeyXGTw

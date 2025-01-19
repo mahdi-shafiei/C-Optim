@@ -141,11 +141,6 @@ if __name__ == "__main__":
             # Tokenize the input
             texts = [tokenizer.apply_chat_template(each, tokenize=False, add_generation_prompt=True) for each in messages]
             outputs = tokenizer(texts, padding=False)
-
-            # outputs = tokenizer(
-            #    element[dataset_text_field],
-            #    padding=False,
-            #)
             return {"input_ids": outputs["input_ids"]}
 
         return dataset.map(
