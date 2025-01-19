@@ -96,7 +96,7 @@ def make_step_rewards(logits, token_masks, step_lengths, reduce = False):
     return all_scores_res
 
 def get_stepwise_reward(
-    model: torch.nn.Module, query: torch.Tensor, response: torch.Tensor, pad_token_id: int, context_length: int, processing_class: Optional[
+        model: torch.nn.Module, query: torch.Tensor, response: torch.Tensor, pad_token_id: int, context_length: int, response_length:int, processing_class: Optional[
             Union[PreTrainedTokenizerBase, BaseImageProcessor, FeatureExtractionMixin, ProcessorMixin]
         ],
         rm_processing_class: Optional[
@@ -126,7 +126,6 @@ def get_stepwise_reward(
             - `sequence_lengths` (`torch.Tensor`):
                 The lengths of the sequences in the query responses.
     """
-
     scores = []
     queries = processing_class.batch_decode(query, skip_special_tokens=True)
     responses = processing_class.batch_decode(response, skip_special_tokens=True)
@@ -158,7 +157,9 @@ def get_stepwise_reward(
         step_lengths = []
         for each in response.split("\n\n"):
             step_lengths.append(processing_class.encode(each + "\n\n", return_tensors="pt").shape[1])
-        step_lengths[-1]-=1
+        
+        step_lengths[-1] -= sum(step_lengths) - response_length
+
         outputs = model(input_ids=input_ids)
         step_sep_id = rm_processing_class.encode("<extra_0>")[0]
         token_masks = (input_ids == step_sep_id)
@@ -555,7 +556,7 @@ class PPOTrainer(Trainer):
                     value = full_value[:, context_length - 1 : -1].squeeze(-1)
                     if args.prm:
                         score = get_stepwise_reward(
-                            reward_model, query, postprocessed_response, processing_class.pad_token_id, context_length, self.processing_class, self.rm_processing_class
+                            reward_model, query, postprocessed_response, processing_class.pad_token_id, context_length, args.response_length, self.processing_class, self.rm_processing_class
                         )
                     else:
                         _, score, _ = get_reward(
@@ -816,7 +817,7 @@ class PPOTrainer(Trainer):
 
                     postprocessed_query_response = torch.cat((query, postprocessed_response), 1)
                     if args.prm:
-                        score = get_stepwise_reward(self.reward_model, query, postprocessed_response, processing_class.pad_token_id, context_length, self.processing_class, self.rm_processing_class, reduce = True)
+                        score = get_stepwise_reward(self.reward_model, query, postprocessed_response, processing_class.pad_token_id, context_length, args.response_length, self.processing_class, self.rm_processing_class, reduce = True)
                     else:
                         _, score, _ = get_reward(
                             self.reward_model, postprocessed_query_response, processing_class.pad_token_id, context_length)
