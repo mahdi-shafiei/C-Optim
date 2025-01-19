@@ -76,7 +76,7 @@ if is_peft_available():
 if is_wandb_available():
     import wandb
 
-def make_step_rewards(logits, token_masks):
+def make_step_rewards(logits, token_masks, step_lengths, reduce = False):
     probabilities = F.softmax(logits, dim=-1)
     probabilities = probabilities * token_masks.unsqueeze(-1) # bs, seq_len, num_labels
     
@@ -84,8 +84,15 @@ def make_step_rewards(logits, token_masks):
     for i in range(probabilities.size(0)):
         sample = probabilities[i] # seq_len, num_labels
         positive_probs = sample[sample != 0].view(-1, 2)[:, 1] # valid_tokens, num_labels
-        min_reward = torch.amin(positive_probs, keepdim=False)
-        all_scores_res.append(min_reward)
+        if reduce:
+            mean_reward = torch.mean(positive_probs)
+            all_scores_res.append(mean_reward)
+        else:
+            scores_res = []
+            for step_i, l in enumerate(step_lengths):
+                scores_res+=[positive_probs[step_i] for _ in range(l)]
+            scores_res = torch.stack(scores_res)
+            all_scores_res.append(scores_res)
     return all_scores_res
 
 def get_stepwise_reward(
@@ -94,7 +101,8 @@ def get_stepwise_reward(
         ],
         rm_processing_class: Optional[
             Union[PreTrainedTokenizerBase, BaseImageProcessor, FeatureExtractionMixin, ProcessorMixin]
-        ], 
+        ],
+        reduce: bool = False
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Computes the reward logits and the rewards for a given model and query responses.
@@ -119,34 +127,12 @@ def get_stepwise_reward(
                 The lengths of the sequences in the query responses.
     """
 
-    # attention_mask = query_responses != pad_token_id
-    # position_ids = attention_mask.cumsum(1) - attention_mask.long()  # exclusive cumsum
-    # lm_backbone = getattr(model, model.base_model_prefix)
-    # input_ids = torch.masked_fill(query_responses, ~attention_mask, 0)
-    # output = lm_backbone(
-    #     input_ids=input_ids,
-    #     attention_mask=attention_mask,
-    #     position_ids=position_ids,
-    #     return_dict=True,
-    #     output_hidden_states=True,
-    #     use_cache=False,  # otherwise mistral-based RM would error out
-    # )
-    # reward_logits = model.score(output.hidden_states[-1])
-    # sequence_lengths = first_true_indices(query_responses[:, context_length:] == pad_token_id) - 1 + context_length
-    # # https://github.com/huggingface/transformers/blob/dc68a39c8111217683bf49a4912d0c9018bab33d/src/transformers/models/gpt2/modeling_gpt2.py#L1454
-    # return (
-    #     reward_logits,
-    #     reward_logits[
-    #         torch.arange(reward_logits.size(0), device=reward_logits.device),
-    #         sequence_lengths,
-    #     ].squeeze(-1),
-    #     sequence_lengths,
-    # )
     scores = []
     queries = processing_class.batch_decode(query, skip_special_tokens=True)
     responses = processing_class.batch_decode(response, skip_special_tokens=True)
     for i in range(query.shape[0]):
         query = queries[i]
+        query = query.split("\nuser\n")[1].strip("\nassistant\n")
         response = responses[i]
         data = {
             "system": "Please reason step by step, and put your final answer within \\boxed{}.",
@@ -164,17 +150,19 @@ def get_stepwise_reward(
             tokenize=False, 
             add_generation_prompt=False
         )
-
         input_ids = rm_processing_class.encode(
             conversation_str, 
             return_tensors="pt", 
         ).to(model.device)
-
+        
+        step_lengths = []
+        for each in response.split("\n\n"):
+            step_lengths.append(processing_class.encode(each + "\n\n", return_tensors="pt").shape[1])
+        step_lengths[-1]-=1
         outputs = model(input_ids=input_ids)
-
         step_sep_id = rm_processing_class.encode("<extra_0>")[0]
         token_masks = (input_ids == step_sep_id)
-        scores.extend(make_step_rewards(outputs[0], token_masks)) 
+        scores.extend(make_step_rewards(outputs[0], token_masks, step_lengths, reduce)) 
     scores = torch.stack(scores)
     return scores
 
@@ -614,7 +602,10 @@ class PPOTrainer(Trainer):
                 rewards = non_score_reward.clone()
                 actual_start = torch.arange(rewards.size(0), device=rewards.device)
                 actual_end = torch.where(sequence_lengths_p1 < rewards.size(1), sequence_lengths_p1, sequence_lengths)
-                rewards[[actual_start, actual_end]] += scores
+                if args.prm:
+                    rewards += scores
+                else:
+                    rewards[[actual_start, actual_end]] += scores
 
                 # 5. whiten rewards
                 if args.whiten_rewards:
@@ -825,7 +816,7 @@ class PPOTrainer(Trainer):
 
                     postprocessed_query_response = torch.cat((query, postprocessed_response), 1)
                     if args.prm:
-                        score = get_stepwise_reward(self.reward_model, query, postprocessed_response, processing_class.pad_token_id, context_length, self.processing_class, self.rm_processing_class)
+                        score = get_stepwise_reward(self.reward_model, query, postprocessed_response, processing_class.pad_token_id, context_length, self.processing_class, self.rm_processing_class, reduce = True)
                     else:
                         _, score, _ = get_reward(
                             self.reward_model, postprocessed_query_response, processing_class.pad_token_id, context_length)

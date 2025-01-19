@@ -103,7 +103,7 @@ if __name__ == "__main__":
     )
     if training_args.prm:
         reward_model = AutoModel.from_pretrained(
-            training_args.reward_model_path, trust_remote_code=model_args.trust_remote_code, num_labels=1
+            training_args.reward_model_path, trust_remote_code=True
         )
     else:
         reward_model = AutoModelForSequenceClassification.from_pretrained(
