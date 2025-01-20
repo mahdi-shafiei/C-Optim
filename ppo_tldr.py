@@ -154,7 +154,7 @@ if __name__ == "__main__":
 
     assert train_dataset[0]["input_ids"][-1] != tokenizer.eos_token_id, "The last token should not be an EOS token"
     
-    num_training_steps = len(train_dataset) // training_args.per_device_train_batch_size // training_args.num_gpus // training_args.gradient_accumulation_steps * training_args.num_train_epochs
+    num_training_steps = training_args.total_episodes // training_args.per_device_train_batch_size // training_args.num_gpus // training_args.gradient_accumulation_steps * training_args.num_train_epochs
 
     trainable_parameters = [each for each in policy.parameters()] + [each for each in value_model.parameters()]
     if training_args.custom_optim == "c_adamw":
