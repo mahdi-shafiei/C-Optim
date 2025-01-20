@@ -98,7 +98,6 @@ torchrun --standalone --nproc_per_node 4 run_mae.py \
     --gradient_accumulation_steps 4
 ```
 ### Post Training Qwen2.5
-#### Instruction Tuning
 ```
 torchrun \
     --rdzv_id=$JOB_ID \
@@ -116,29 +115,26 @@ torchrun \
 
 ---
 
-#### PPO
+### PPO
 ```
-accelerate launch C-Optim/ppo.py \
-    --dataset_name PowerInfer/QWQ-LONGCOT-500K \
-    --dataset_train_split train \
-    --output_dir $SCRATCH/ppo/cautious_1.5b \
-    --num_ppo_epochs 1 \
-    --num_mini_batches 1 \
+accelerate launch ppo_tldr.py \
+    --dataset_name trl-internal-testing/tldr-preference-sft-trl-style \
+    --dataset_test_split validation \     
+    --output_dir models/minimal/ppo_tldr \
     --learning_rate 3e-6 \
-    --per_device_train_batch_size 1 \
-    --gradient_accumulation_steps 1 \
-    --total_episodes 20000 \
-    --model_name_or_path cautious_1.5b/checkpoint-92457/ \
-    --sft_model_path  cautious_1.5b/checkpoint-92457/ \
-    --reward_model_path Qwen/Qwen2.5-Math-PRM-7B \
-    --local_rollout_forward_batch_size 1 \
+    --per_device_train_batch_size 16 \
+    --gradient_accumulation_steps 4 \
+    --total_episodes 1000000 \
+    --model_name_or_path EleutherAI/pythia-1b-deduped \
+    --sft_model_path cleanrl/EleutherAI_pythia-1b-deduped__sft__tldr \
+    --reward_model_path cleanrl/EleutherAI_pythia-1b-deduped__reward__tldr \
+    --local_rollout_forward_batch_size 16 \
     --missing_eos_penalty 1.0 \
-    --prm \
-    --num_gpus 8 \
+    --stop_token eos \
+    --eval_strategy steps \
+    --eval_steps 100 \
     --custom_optim c_adamw \
-    --dataset_text_field prompt \
-    --gradient_checkpointing \
-    --response_length 1024
+    --num_gpus 8
 ```
 
 ---
