@@ -89,7 +89,8 @@ def make_step_rewards(logits, token_masks, step_lengths, response_length):
         reduced_scores_res.append(mean_reward)
         scores_res = []
         for step_i, l in enumerate(step_lengths):
-            scores_res+=[torch.zeros_like(positive_probs[step_i]) for _ in range(l - 1)] + [positive_probs[step_i]] 
+            # scores_res+=[torch.zeros_like(positive_probs[step_i]) for _ in range(l - 1)] + [positive_probs[step_i]] 
+            scores_res+=[positive_probs[step_i] for _ in range(l)]
         scores_res = torch.stack(scores_res)[:response_length]
         all_scores_res.append(scores_res)
     return reduced_scores_res, all_scores_res

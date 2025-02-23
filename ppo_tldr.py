@@ -158,9 +158,9 @@ if __name__ == "__main__":
 
     trainable_parameters = [each for each in policy.parameters()] + [each for each in value_model.parameters()]
     if training_args.custom_optim == "c_adamw":
-        optim = C_AdamW(trainable_parameters, betas = (0.9, 0.999), weight_decay= training_args.weight_decay, lr = training_args.learning_rate)
+        optim = C_AdamW(trainable_parameters, betas = (0.9, training_args.adam_beta2), weight_decay= training_args.weight_decay, lr = training_args.learning_rate)
     else:
-        optim = transformers.AdamW(trainable_parameters, betas = (0.9, 0.999), weight_decay = training_args.weight_decay, lr = training_args.learning_rate)
+        optim = transformers.AdamW(trainable_parameters, betas = (0.9, training_args.adam_beta2), weight_decay = training_args.weight_decay, lr = training_args.learning_rate)
     scheduler = transformers.get_linear_schedule_with_warmup(optim, int(num_training_steps * training_args.warmup_ratio) , num_training_steps)
 
     ################
