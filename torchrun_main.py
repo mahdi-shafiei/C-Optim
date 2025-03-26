@@ -25,7 +25,6 @@ from peft_pretraining import training_utils, args_utils
 from peft_pretraining.dataloader import PreprocessedIterableDataset
 from peft_pretraining.modeling_llama import LlamaForCausalLM
 
-import bitsandbytes as bnb
 from c_adamw import AdamW as C_AdamW
 from lion import Lion
 from c_lion import Lion as C_Lion
