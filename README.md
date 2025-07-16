@@ -149,13 +149,11 @@ accelerate launch ppo_tldr.py \
 
 ## 📖 Citation
 ```bibtex
-@misc{liang2024online,
-      title={Cautious Optimizers: Improving Training with One Line of Code}, 
-      author={Kaizhao Liang and Lizhang Chen and Bo Liu and Qiang Liu},
-      year={2024},
-      eprint={https://arxiv.org/abs/2411.16085},
-      archivePrefix={arXiv},
-      primaryClass={cs.LG}
+@article{liang2024cautious,
+  title={Cautious optimizers: Improving training with one line of code},
+  author={Liang, Kaizhao and Chen, Lizhang and Liu, Bo and Liu, Qiang},
+  journal={arXiv preprint arXiv:2411.16085},
+  year={2024}
 }
 ```
 
