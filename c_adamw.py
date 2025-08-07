@@ -1,14 +1,236 @@
 # copy dependencies from transformers/optimization.py
 import math
 import warnings
-from typing import Callable, Iterable, Tuple
+from typing import cast, Callable, Iterable, Tuple, Optional, Union
 
 import torch
 from torch import nn
+from torch import Tensor
 from torch.optim import Optimizer
 
 from transformers.utils.versions import require_version
+from torch.optim.optimizer import (
+    _capturable_doc,
+    _default_to_fused_or_foreach,
+    _device_dtype_check_for_fused,
+    _differentiable_doc,
+    _disable_dynamo_if_unsupported,
+    _foreach_doc,
+    _fused_doc,
+    _get_capturable_supported_devices,
+    _get_scalar_dtype,
+    _get_value,
+    _maximize_doc,
+    _stack_if_compiling,
+    _to_scalar,
+    _use_grad_for_differentiable,
+    _view_as_real,
+    DeviceDict,
+    DeviceDtypeDict,
+    Optimizer,
+    ParamsT,
+)
 
+def _multi_tensor_adam(
+    params: list[Tensor],
+    grads: list[Tensor],
+    exp_avgs: list[Tensor],
+    exp_avg_sqs: list[Tensor],
+    max_exp_avg_sqs: list[Tensor],
+    state_steps: list[Tensor],
+    grad_scale: Optional[Tensor],
+    found_inf: Optional[Tensor],
+    *,
+    amsgrad: bool,
+    has_complex: bool,
+    beta1: Union[float, Tensor],
+    beta2: Union[float, Tensor],
+    lr: Union[float, Tensor],
+    weight_decay: float,
+    eps: float,
+    maximize: bool,
+    capturable: bool,
+    differentiable: bool,
+    decoupled_weight_decay: bool,
+    cautious: bool = False,  # new flag
+):
+    if len(params) == 0:
+        return
+
+    if isinstance(lr, Tensor):
+        if not capturable:
+            raise RuntimeError(
+                "lr as a Tensor is not supported for capturable=False and foreach=True"
+            )
+        if lr.numel() != 1:
+            raise ValueError("Tensor lr must be 1-element")
+
+    if isinstance(beta1, Tensor):
+        if not capturable:
+            raise ValueError("beta1 as a Tensor is not supported for capturable=False and foreach=True")
+        if beta1.numel() != 1:
+            raise ValueError("Tensor beta1 must be 1-element")
+
+    if isinstance(beta2, Tensor):
+        if not capturable:
+            raise ValueError("beta2 as a Tensor is not supported for capturable=False and foreach=True")
+        if beta2.numel() != 1:
+            raise ValueError("Tensor beta2 must be 1-element")
+
+    if not torch.compiler.is_compiling() and capturable:
+        capturable_supported_devices = _get_capturable_supported_devices(supports_xla=False)
+        assert all(
+            p.device.type == step.device.type
+            and p.device.type in capturable_supported_devices
+            for p, step in zip(params, state_steps)
+        ), (
+            f"If capturable=True, params and state_steps must be on supported devices: {capturable_supported_devices}."
+        )
+
+    assert grad_scale is None and found_inf is None
+    assert not differentiable, "_foreach ops don't support autograd"
+
+    lr = _to_scalar(lr)
+
+    grouped_tensors = Optimizer._group_tensors_by_device_and_dtype(
+        [params, grads, exp_avgs, exp_avg_sqs, max_exp_avg_sqs, state_steps]
+    )
+
+    beta1_dict: Optional[DeviceDict] = (
+        {beta1.device: beta1}
+        if isinstance(beta1, Tensor) and str(beta1.device) != "cpu"
+        else None
+    )
+
+    for (
+        device_params_,
+        device_grads_,
+        device_exp_avgs_,
+        device_exp_avg_sqs_,
+        device_max_exp_avg_sqs_,
+        device_state_steps_,
+    ), _ in grouped_tensors.values():
+        device_params = cast(list[Tensor], device_params_)
+        device_grads = cast(list[Tensor], device_grads_)
+        device_exp_avgs = cast(list[Tensor], device_exp_avgs_)
+        device_exp_avg_sqs = cast(list[Tensor], device_exp_avg_sqs_)
+        device_state_steps = cast(list[Tensor], device_state_steps_)
+
+        device = device_params[0].device
+        if beta1_dict is not None and device not in beta1_dict:
+            beta1_dict[device] = beta1.to(device=device, non_blocking=True)
+
+        device_beta1 = beta1_dict[device] if beta1_dict else beta1
+
+        if has_complex:
+            if amsgrad:
+                device_max_exp_avg_sqs = cast(list[Tensor], device_max_exp_avg_sqs_)
+                _view_as_real(device_params, device_grads, device_exp_avgs, device_exp_avg_sqs, device_max_exp_avg_sqs)
+            else:
+                _view_as_real(device_params, device_grads, device_exp_avgs, device_exp_avg_sqs)
+
+        if maximize:
+            device_grads = torch._foreach_neg(device_grads)
+
+        if not torch.compiler.is_compiling() and device_state_steps[0].is_cpu:
+            torch._foreach_add_(device_state_steps, torch.tensor(1.0, device="cpu"), alpha=1.0)
+        else:
+            torch._foreach_add_(device_state_steps, 1)
+
+        if weight_decay != 0:
+            if decoupled_weight_decay:
+                torch._foreach_mul_(device_params, 1 - lr * weight_decay)
+            else:
+                if maximize:
+                    torch._foreach_add_(device_grads, device_params, alpha=weight_decay)
+                else:
+                    device_grads = torch._foreach_add(device_grads, device_params, alpha=weight_decay)
+
+        torch._foreach_lerp_(device_exp_avgs, device_grads, cast(float, 1 - device_beta1))
+        torch._foreach_mul_(device_exp_avg_sqs, beta2)
+
+        if isinstance(beta2, torch.Tensor):
+            scaled_device_grads = torch._foreach_mul(device_grads, 1 - beta2)
+            value = 1.0
+        else:
+            scaled_device_grads = device_grads
+            value = 1 - beta2
+
+        torch._foreach_addcmul_(device_exp_avg_sqs, scaled_device_grads, device_grads, value)
+
+        del device_grads
+        del scaled_device_grads
+
+        if capturable:
+            bias_correction1 = torch._foreach_pow(beta1, device_state_steps)
+            bias_correction2 = torch._foreach_pow(beta2, device_state_steps)
+            torch._foreach_sub_(bias_correction1, 1)
+            torch._foreach_sub_(bias_correction2, 1)
+            torch._foreach_neg_(bias_correction2)
+
+            torch._foreach_div_(bias_correction1, lr)
+            torch._foreach_reciprocal_(bias_correction1)
+            torch._foreach_sqrt_(bias_correction2)
+
+            step_size = bias_correction1
+            bias_correction2_sqrt = bias_correction2
+
+            if amsgrad:
+                device_max_exp_avg_sqs = cast(list[Tensor], device_max_exp_avg_sqs_)
+                torch._foreach_maximum_(device_max_exp_avg_sqs, device_exp_avg_sqs)
+                exp_avg_sq_sqrt = torch._foreach_sqrt(device_max_exp_avg_sqs)
+            else:
+                exp_avg_sq_sqrt = torch._foreach_sqrt(device_exp_avg_sqs)
+
+            torch._foreach_div_(exp_avg_sq_sqrt, bias_correction2_sqrt)
+            torch._foreach_add_(exp_avg_sq_sqrt, eps)
+            torch._foreach_div_(exp_avg_sq_sqrt, step_size)
+
+            if cautious:
+                # cautious masking
+                mask = torch._foreach_mul(device_exp_avgs, device_exp_avgs)  # no grad available here
+                mask = [m.gt(0.0).to(e.dtype) for m, e in zip(mask, device_exp_avgs)]
+                mean_mask = [m.mean().clamp(min=1e-3) for m in mask]
+                mask = [m / mm for m, mm in zip(mask, mean_mask)]
+                masked_exp_avg = torch._foreach_mul(device_exp_avgs, mask)
+                torch._foreach_addcdiv_(device_params, masked_exp_avg, exp_avg_sq_sqrt)
+            else:
+                torch._foreach_addcdiv_(device_params, device_exp_avgs, exp_avg_sq_sqrt)
+
+        else:
+            bias_correction1 = [
+                1 - beta1 ** _get_value(step) for step in device_state_steps
+            ]
+            bias_correction2 = [
+                1 - beta2 ** _get_value(step) for step in device_state_steps
+            ]
+
+            step_size = _stack_if_compiling([(lr / bc) * -1 for bc in bias_correction1])
+            bias_correction2_sqrt = [bc**0.5 for bc in bias_correction2]
+
+            if amsgrad:
+                device_max_exp_avg_sqs = cast(list[Tensor], device_max_exp_avg_sqs_)
+                torch._foreach_maximum_(device_max_exp_avg_sqs, device_exp_avg_sqs)
+                exp_avg_sq_sqrt = torch._foreach_sqrt(device_max_exp_avg_sqs)
+            else:
+                exp_avg_sq_sqrt = torch._foreach_sqrt(device_exp_avg_sqs)
+
+            torch._foreach_div_(exp_avg_sq_sqrt, bias_correction2_sqrt)
+            torch._foreach_add_(exp_avg_sq_sqrt, eps)
+
+            if cautious:
+                mask = torch._foreach_mul(device_exp_avgs, device_exp_avgs)
+                mask = [m.gt(0.0).to(e.dtype) for m, e in zip(mask, device_exp_avgs)]
+                mean_mask = [m.mean().clamp(min=1e-3) for m in mask]
+                mask = [m / mm for m, mm in zip(mask, mean_mask)]
+                masked_exp_avg = torch._foreach_mul(device_exp_avgs, mask)
+                torch._foreach_addcdiv_(
+                    device_params, masked_exp_avg, exp_avg_sq_sqrt, step_size
+                )
+            else:
+                torch._foreach_addcdiv_(
+                    device_params, device_exp_avgs, exp_avg_sq_sqrt, step_size
+                )
 
 class AdamW(Optimizer):
     """
@@ -41,6 +263,7 @@ class AdamW(Optimizer):
         weight_decay: float = 0.0,
         correct_bias: bool = True,
         no_deprecation_warning: bool = False,
+        foreach: bool = False
     ):
         if not no_deprecation_warning:
             warnings.warn(
@@ -61,6 +284,49 @@ class AdamW(Optimizer):
         defaults = {"lr": lr, "betas": betas, "eps": eps, "weight_decay": weight_decay, "correct_bias": correct_bias}
         super().__init__(params, defaults)
         self.init_lr = lr
+        self._foreach = foreach
+
+    def _init_group(
+        self,
+        group,
+        params_with_grad,
+        grads,
+        exp_avgs,
+        exp_avg_sqs,
+        max_exp_avg_sqs,
+        state_steps,
+    ):
+        has_complex = False
+        for p in group["params"]:
+            if p.grad is not None:
+                has_complex |= torch.is_complex(p)
+                params_with_grad.append(p)
+                if p.grad.is_sparse:
+                    raise RuntimeError(
+                        "Adam does not support sparse gradients, please consider SparseAdam instead"
+                    )
+                grads.append(p.grad)
+
+                state = self.state[p]
+                # Lazy state initialization
+                if len(state) == 0:
+                    # note(crcrpar): [special device hosting for step]
+                    # Deliberately host `step` on CPU if both capturable and fused are off.
+                    # This is because kernel launches are costly on CUDA and XLA.
+                    state["step"] = (torch.tensor(0.0, dtype=_get_scalar_dtype()))
+                    # Exponential moving average of gradient values
+                    state["exp_avg"] = torch.zeros_like(
+                        p, memory_format=torch.preserve_format
+                    )
+                    # Exponential moving average of squared gradient values
+                    state["exp_avg_sq"] = torch.zeros_like(
+                        p, memory_format=torch.preserve_format
+                    )
+
+                exp_avgs.append(state["exp_avg"])
+                exp_avg_sqs.append(state["exp_avg_sq"])
+                state_steps.append(state["step"])
+        return has_complex
 
     @torch.no_grad()
     def step(self, closure: Callable = None):
@@ -73,6 +339,49 @@ class AdamW(Optimizer):
         loss = None
         if closure is not None:
             loss = closure()
+
+        if self._foreach:
+            # collect grouped tensors for multi-tensor version
+            params_with_grad, grads, exp_avgs, exp_avg_sqs, state_steps = [], [], [], [], []
+            max_exp_avg_sqs = []
+
+            for group in self.param_groups:
+
+                has_complex = self._init_group(
+                    group,
+                    params_with_grad,
+                    grads,
+                    exp_avgs,
+                    exp_avg_sqs,
+                    max_exp_avg_sqs,
+                    state_steps,
+                )
+
+                beta1, beta2 = group["betas"]
+                if len(params_with_grad) > 0:
+                    _multi_tensor_adam(
+                        params=params_with_grad,
+                        grads=grads,
+                        exp_avgs=exp_avgs,
+                        exp_avg_sqs=exp_avg_sqs,
+                        max_exp_avg_sqs=max_exp_avg_sqs,
+                        state_steps=state_steps,
+                        grad_scale=None,
+                        found_inf=None,
+                        amsgrad=group.get("amsgrad", False),
+                        has_complex=False,
+                        beta1=beta1,
+                        beta2=beta2,
+                        lr=group["lr"],
+                        weight_decay=group["weight_decay"],
+                        eps=group["eps"],
+                        maximize=False,
+                        capturable=False,
+                        differentiable=False,
+                        decoupled_weight_decay=True,
+                        cautious=True,  # <<< enable cautious logic
+                    )
+            return loss
 
         for group in self.param_groups:
             for i, p in enumerate(group["params"]):
@@ -120,3 +429,47 @@ class AdamW(Optimizer):
                 norm_grad = (exp_avg * mask) / denom
                 p.add_(norm_grad, alpha=-step_size)
         return loss
+
+def test_c_adamw():
+    import copy
+    torch.manual_seed(42)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    model = nn.Linear(10, 1).to(device)
+    optimizer = AdamW(
+        model.parameters(),
+        lr=1e-2,
+        foreach=True
+    )
+    # Dummy input and target
+    x = torch.randn(16, 10, device=device)
+    y = torch.randn(16, 1, device=device)
+
+    # Forward
+    y_pred = model(x)
+    loss_fn = nn.MSELoss()
+    loss = loss_fn(y_pred, y)
+
+    # Backward
+    loss.backward()
+
+    # Save params before step
+    before = copy.deepcopy([p.detach().clone() for p in model.parameters()])
+
+    # Step
+    optimizer.step()
+    optimizer.zero_grad()
+
+    # Save params after step
+    after = [p.detach().clone() for p in model.parameters()]
+
+    # Print parameter changes
+    for i, (b, a) in enumerate(zip(before, after)):
+        diff = (b - a).abs().sum().item()
+        print(f"Param {i} changed by: {diff:.6f}")
+        assert diff > 0, f"Parameter {i} did not change!"
+
+    print("✅ C-AdamW with foreach ran successfully.")
+
+if __name__ == "__main__":
+    test_c_adamw()
