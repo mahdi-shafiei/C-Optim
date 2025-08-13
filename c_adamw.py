@@ -160,7 +160,6 @@ def _multi_tensor_adam(
 
         torch._foreach_addcmul_(device_exp_avg_sqs, scaled_device_grads, device_grads, value)
 
-        del device_grads
         del scaled_device_grads
 
         if capturable:
