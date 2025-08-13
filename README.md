@@ -8,7 +8,7 @@ Our theoretical findings reveal that this modification preserves Adam’s Hamilt
 ---
 
 ## 🌟 News
-- **[2025-08-07]** [Implementing C-AdamW with parallel apply by popular demand](https://github.com/kyleliang919/C-Optim/blob/main/c_adamw.py) 🚨🚨🚨 Currently foreach is not compatible with FSDP, it won't error out but masking and scaling would behave differently 🚨🚨🚨       
+- **[2025-08-07]** [Implementing C-AdamW with parallel apply by popular demand](https://github.com/kyleliang919/C-Optim/blob/main/c_adamw.py) 🚨🚨🚨 Under current implementation with FSDP, masking and scaling would behave differently, since syncing would take took long 🚨🚨🚨       
 - **[2025-01-23]** [PPO (Reinforcement Learning)](https://github.com/kyleliang919/C-Optim/blob/main/ppo_tldr.py)
 - **[2025-01-14]** [Post Training experiment on Qwen2.5 1.5B Instruct](https://github.com/kyleliang919/C-Optim/blob/main/post_training.py)
 - **[2024-12-03]** 🤗🤗🤗 More validation runs on ViTs [timm-optim-caution](https://huggingface.co/rwightman/timm-optim-caution)
