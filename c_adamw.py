@@ -189,7 +189,7 @@ def _multi_tensor_adam(
 
             if cautious:
                 # cautious masking
-                mask = torch._foreach_mul(device_exp_avgs, device_grads)  # no grad available here
+                mask = torch._foreach_mul(device_exp_avgs, device_grads)
                 mask = [m.gt(0.0).to(e.dtype) for m, e in zip(mask, device_exp_avgs)]
                 mean_mask = [m.mean().clamp(min=1e-3) for m in mask]
                 mask = [m / mm for m, mm in zip(mask, mean_mask)]
