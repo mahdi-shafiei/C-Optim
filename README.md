@@ -9,7 +9,7 @@ Our theoretical findings reveal that this modification preserves Adam’s Hamilt
 
 ## 🌟 News
 - **[2025-08-14]** Chinchilla Optimal (20x) runs
-  - [Llama3 1B pretrained on FineWeb-edu 20x Chinchilla with AdamW](https://huggingface.co/kz919/llama3_1b_chinchilla_8142025)
+  - [Llama3 1B pretrained on FineWeb-edu 20x Chinchilla with AdamW](https://huggingface.co/kz919/llama3_1b_chinchilla_8132025)
   - [Llama3 1B pretrained on FineWeb-edu 20x Chinchilla with C-AdamW](https://huggingface.co/kz919/llama3_1b_cautious_chinchilla_8142025)
   
 - **[2025-08-07]** [Implementing C-AdamW with parallel apply by popular demand](https://github.com/kyleliang919/C-Optim/blob/main/c_adamw.py) 🚨🚨🚨 Under current implementation with FSDP, masking and scaling would behave differently, since syncing would take took long 🚨🚨🚨       
