@@ -8,7 +8,7 @@ Our theoretical findings reveal that this modification preserves Adam’s Hamilt
 ---
 
 ## 🌟 News
-- **[2025-08-14]** Chinchilla Optimal (20x) runs
+- **[2025-08-14]** Chinchilla Optimal (20x) runs with torchtitan
   - [Llama3 1B pretrained on FineWeb-edu 20x Chinchilla with AdamW](https://huggingface.co/kz919/llama3_1b_chinchilla_8132025)
   - [Llama3 1B pretrained on FineWeb-edu 20x Chinchilla with C-AdamW](https://huggingface.co/kz919/llama3_1b_cautious_chinchilla_8142025)
   
