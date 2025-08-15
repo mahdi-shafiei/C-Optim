@@ -8,7 +8,7 @@ Our theoretical findings reveal that this modification preserves Adam’s Hamilt
 ---
 
 ## 🌟 News
-- **[2025-08-14]** Chinchilla Optimal (20x) on FineWeb-edu with torchtitan
+- **[2025-08-14]** Chinchilla Optimal (20x tokens/parameters) on FineWeb-edu with torchtitan
   - [Llama3 1B (AdamW)](https://huggingface.co/kz919/llama3_1b_chinchilla_8132025)
   - [Llama3 1B (C-AdamW (Local scaling))](https://huggingface.co/kz919/llama3_1b_cautious_chinchilla_8142025)
   - [Llama3 3B (AdamW)](https://huggingface.co/kz919/llama3_3b_chinchilla_8142025)
