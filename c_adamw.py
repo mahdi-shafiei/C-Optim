@@ -30,8 +30,6 @@ from torch.optim.optimizer import (
     Optimizer,
     ParamsT,
 )
-from torch.distributed.tensor import distribute_tensor
-from torch.distributed.tensor import DTensor
 
 def _multi_tensor_adam(
     params: list[Tensor],
@@ -422,16 +420,10 @@ class AdamW(Optimizer):
                     bias_correction1 = 1.0 - beta1 ** state["step"]
                     bias_correction2 = 1.0 - beta2 ** state["step"]
                     step_size = step_size * math.sqrt(bias_correction2) / bias_correction1
-
-                # compute norm gradient
-                if type(grad) is torch.distributed.tensor.DTensor:
-                    mask = (exp_avg.full_tensor() * grad.full_tensor() > 0).to(grad.dtype)
-                    mask.div_(mask.mean().clamp_(min=1e-3))
-                    mask = distribute_tensor(mask, device_mesh = grad.device_mesh, placements = grad.placements)
-                else:
-                    mask = (exp_avg * grad > 0).to(grad.dtype)
-                    # mask = mask * (mask.numel() / (mask.sum() + 1)) ## original implementation, leaving it here for record
-                    mask.div_(mask.mean().clamp_(min=1e-3)) # https://huggingface.co/rwightman/timm-optim-caution found this implementation is more favoarable in many cases
+                    
+                mask = (exp_avg * grad > 0).to(grad.dtype)
+                # mask = mask * (mask.numel() / (mask.sum() + 1)) ## original implementation, leaving it here for record
+                mask.div_(mask.mean().clamp_(min=1e-3)) # https://huggingface.co/rwightman/timm-optim-caution found this implementation is more favoarable in many cases
                 norm_grad = (exp_avg * mask) / denom
                 p.add_(norm_grad, alpha=-step_size)
         return loss
