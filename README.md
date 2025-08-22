@@ -14,7 +14,7 @@ Our theoretical findings reveal that this modification preserves Adam’s Hamilt
   - [Llama3 3B (AdamW)](https://huggingface.co/kz919/llama3_3b_chinchilla_8142025)
   - [Llama3 3B (C-AdamW (Local scaling))](https://huggingface.co/kz919/llama3_3b_cautious_chinchilla_8152025)
   
-- **[2025-08-07]** [Implementing C-AdamW with parallel apply by popular demand](https://github.com/kyleliang919/C-Optim/blob/main/c_adamw.py) 🚨🚨🚨 Under current implementation with FSDP, masking and scaling would behave differently, since syncing would take took long 🚨🚨🚨       
+- **[2025-08-07]** [Implementing C-AdamW with parallel apply by popular demand](https://github.com/kyleliang919/C-Optim/blob/main/c_adamw.py)     
 - **[2025-01-23]** [PPO (Reinforcement Learning)](https://github.com/kyleliang919/C-Optim/blob/main/ppo_tldr.py)
 - **[2025-01-14]** [Post Training experiment on Qwen2.5 1.5B Instruct](https://github.com/kyleliang919/C-Optim/blob/main/post_training.py)
 - **[2024-12-03]** 🤗🤗🤗 More validation runs on ViTs [timm-optim-caution](https://huggingface.co/rwightman/timm-optim-caution)
