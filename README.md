@@ -35,23 +35,25 @@ Our theoretical findings reveal that this modification preserves Adam’s Hamilt
 ---
 
 ### Pretraining Results
-
 <div align="center">
-  <img src="images/c_optim_results.png" alt="Image 2" style="width: 650px; margin: 0 auto;">
+  <img src="images/llama100M_param_sweep.png" alt="Image 2" style="width: 650px; margin: 0 auto;">
+</div>
+<div align="center">
+  <img src="images/c_optim_results.png" alt="Image 3" style="width: 650px; margin: 0 auto;">
 </div>
 
 ---
 
 ### Post Training Results
 <div align="center">
-  <img src="images/c_adamw_post_training.png" alt="Image 3" style="width: 650px; margin: 0 auto;">
+  <img src="images/c_adamw_post_training.png" alt="Image 4" style="width: 650px; margin: 0 auto;">
 </div>
 
 ---
 
 ### PPO
 <div align="center">
-  <img src="images/ppo_tldr.png" alt="Image 3" style="width: 650px; margin: 0 auto;">
+  <img src="images/ppo_tldr.png" alt="Image 5" style="width: 650px; margin: 0 auto;">
 </div>
 
 ---
