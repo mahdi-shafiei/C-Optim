@@ -1,14 +1,18 @@
 # copy dependencies from transformers/optimization.py
 import math
 import warnings
-from typing import cast, Callable, Iterable, Tuple, Optional, Union
+from typing import Callable, Generator, cast, Callable, List, Iterable, Tuple, Optional, Union
 
+from itertools import chain
 import torch
 from torch import nn
 from torch import Tensor
 from torch.optim import Optimizer
+import torch.distributed as dist
+from torch.distributed import ProcessGroup
+from torch.distributed.tensor import distribute_tensor
+from torch.distributed.tensor import DeviceMesh, DTensor
 
-from transformers.utils.versions import require_version
 from torch.optim.optimizer import (
     _capturable_doc,
     _default_to_fused_or_foreach,
@@ -31,7 +35,15 @@ from torch.optim.optimizer import (
     ParamsT,
 )
 
-def _multi_tensor_adam(
+from .opt_utils import (
+    AsyncTask,
+    AsyncRuntime,
+    to_local,
+    create_param_batches,
+    pad_batch,
+)
+
+def _multi_tensor_c_adam(
     params: list[Tensor],
     grads: list[Tensor],
     exp_avgs: list[Tensor],
@@ -231,6 +243,73 @@ def _multi_tensor_adam(
                     device_params, device_exp_avgs, exp_avg_sq_sqrt, step_size
                 )
 
+@torch.compile(fullgraph=True)
+def c_adamw_update_foreach_async(
+    X: List[Tensor],  # Model weights (modified in place)
+    G: List[Tensor],  # Gradient
+    M: List[Tensor],  # Momentum buffer (modified in place)
+    V: List[Tensor],  # Variance buffer (modified in place)
+    lr: Tensor,  # Learning rate (scalar tensor)
+    beta1: Tensor,  # Beta 1 (scalar tensor)
+    beta2: Tensor,  # Beta 2 (scalar tensor)
+    weight_decay: Tensor,  # Weight decay (scalar tensor)
+    step: int,
+    epsilon: float,
+):
+    """
+    C AdamW optimizer algorithm (async foreach implementation).
+    """
+    batch_size = len(X)
+    assert batch_size == len(G)
+    assert batch_size == len(M)
+    assert batch_size == len(V)
+
+    M_dtype = M[0].dtype
+    V_dtype = V[0].dtype
+
+    # Update momentum and variance
+    # M = beta1 * M + (1 - beta1) * G
+    G = [g.to(dtype=M_dtype) for g in G]
+    torch._foreach_lerp_(M, G, [1 - beta1] * batch_size)
+
+    # V = beta2 * V + (1 - beta2) * G * G
+    G_square = torch._foreach_mul(G, G)
+    G_square = [g.to(dtype=V_dtype) for g in G_square]
+    torch._foreach_lerp_(V, G_square, [1 - beta2] * batch_size)
+
+    # Bias correction
+    bias_correction1 = 1 - beta1**step
+    bias_correction2 = 1 - beta2**step
+    bias_correction2_sqrt = bias_correction2.sqrt()
+
+    # The goal is to compute the following in-place:
+    # M = M / bias_correction1
+    # V = V / bias_correction2
+    # X = X - lr * M / (sqrt(V) + epsilon)
+
+    # Compute the denominator for the weight update
+    # sqrt(V / bias_correction2) = sqrt(V) / sqrt(bias_correction2)
+    denom = torch._foreach_sqrt(V)
+    torch._foreach_div_(denom, bias_correction2_sqrt)
+    torch._foreach_add_(denom, [epsilon] * batch_size)
+
+    # Adjust learning rate to include bias correction 1
+    adj_lr = lr / bias_correction1
+    mask = torch._foreach_mul(M, G)
+    mask = [m.gt(0.0).to(e.dtype) for m, e in zip(mask, M)]
+    mask_mean = [m.mean().clamp(min=1e-3) for m in mask]
+    M = torch._foreach_mul(M, mask)
+    M_div = torch._foreach_div(M, denom)
+    
+    # Apply weight decay
+    torch._foreach_mul_(X, 1 - lr * weight_decay)
+
+    # Weight update
+    torch._foreach_mul_(M_div, adj_lr)
+    torch._foreach_div_(M_div, mask_mean)
+    torch._foreach_sub_(X, M_div)
+    yield
+
 class AdamW(Optimizer):
     """
     Implements Adam algorithm with weight decay fix as introduced in [Decoupled Weight Decay
@@ -262,7 +341,8 @@ class AdamW(Optimizer):
         weight_decay: float = 0.0,
         correct_bias: bool = True,
         no_deprecation_warning: bool = False,
-        foreach: bool = False
+        foreach: bool = True,
+        fused: bool = False
     ):
         if not no_deprecation_warning:
             warnings.warn(
@@ -271,7 +351,6 @@ class AdamW(Optimizer):
                 " warning",
                 FutureWarning,
             )
-        require_version("torch>=1.5.0")  # add_ with alpha
         if lr < 0.0:
             raise ValueError(f"Invalid learning rate: {lr} - should be >= 0.0")
         if not 0.0 <= betas[0] < 1.0:
@@ -284,7 +363,10 @@ class AdamW(Optimizer):
         super().__init__(params, defaults)
         self.init_lr = lr
         self._foreach = foreach
-
+        try:
+            self._world_size = dist.get_world_size()
+        except:
+            self._world_size = 1
     def _init_group(
         self,
         group,
@@ -327,6 +409,43 @@ class AdamW(Optimizer):
                 state_steps.append(state["step"])
         return has_complex
 
+    def _get_or_initialize_state(self, param):
+        state = self.state[param]
+        if not state:
+            state["momentum"] = torch.zeros_like(param)
+            state["variance"] = torch.zeros_like(param)
+        return state
+
+    def _create_tasks(self, param_groups):
+        for group in param_groups:
+            for params in create_param_batches(group["params"], batch_size = self._world_size):
+                params = [p for p in params if p.grad is not None]
+                if not params:
+                    continue
+                gradients = [p.grad for p in params]
+                states = [self._get_or_initialize_state(p) for p in params]
+                momentums = [s["momentum"] for s in states]
+                variances = [s["variance"] for s in states]
+                lr = torch.tensor(group["lr"])
+                beta1 = torch.tensor(group["betas"][0])
+                beta2 = torch.tensor(group["betas"][1])
+                weight_decay = torch.tensor(group["weight_decay"])
+                epsilon = torch.tensor(group["eps"])
+                step = torch.tensor(group["step"])
+                yield AsyncTask(
+                    c_adamw_update_foreach_async(
+                        X=pad_batch(params, self._world_size),
+                        G=pad_batch(gradients, self._world_size),
+                        M=pad_batch(momentums, self._world_size),
+                        V=pad_batch(variances, self._world_size),
+                        lr=lr,
+                        beta1=beta1,
+                        beta2=beta2,
+                        weight_decay=weight_decay,
+                        step=step,
+                        epsilon=epsilon
+                    )
+                )
     @torch.no_grad()
     def step(self, closure: Callable = None):
         """
@@ -341,6 +460,7 @@ class AdamW(Optimizer):
 
         if self._foreach:
             # collect grouped tensors for multi-tensor version
+            '''
             params_with_grad, grads, exp_avgs, exp_avg_sqs, state_steps = [], [], [], [], []
             max_exp_avg_sqs = []
 
@@ -358,7 +478,7 @@ class AdamW(Optimizer):
 
                 beta1, beta2 = group["betas"]
                 if len(params_with_grad) > 0:
-                    _multi_tensor_adam(
+                    _multi_tensor_c_adam(
                         params=params_with_grad,
                         grads=grads,
                         exp_avgs=exp_avgs,
@@ -380,6 +500,24 @@ class AdamW(Optimizer):
                         decoupled_weight_decay=True,
                         cautious=True,  # <<< enable cautious logic
                     )
+            return loss
+            '''
+            
+            loss = None
+            if closure is not None:
+                with torch.enable_grad():
+                    loss = closure()
+            groups = []
+            for group in self.param_groups:
+                if "step" not in group:
+                    group["step"] = 0
+                group["step"] += 1
+                groups.append(group)
+            tasks = self._create_tasks(groups)
+            all_tasks = chain(tasks)
+            runtime = AsyncRuntime(all_tasks, max_concurrent_tasks=3)
+            runtime.run()
+
             return loss
 
         for group in self.param_groups:
@@ -420,10 +558,16 @@ class AdamW(Optimizer):
                     bias_correction1 = 1.0 - beta1 ** state["step"]
                     bias_correction2 = 1.0 - beta2 ** state["step"]
                     step_size = step_size * math.sqrt(bias_correction2) / bias_correction1
-                    
-                mask = (exp_avg * grad > 0).to(grad.dtype)
-                # mask = mask * (mask.numel() / (mask.sum() + 1)) ## original implementation, leaving it here for record
-                mask.div_(mask.mean().clamp_(min=1e-3)) # https://huggingface.co/rwightman/timm-optim-caution found this implementation is more favoarable in many cases
+
+                # compute norm gradient
+                if type(grad) is torch.distributed.tensor.DTensor:
+                    mask = (exp_avg.full_tensor() * grad.full_tensor() > 0).to(grad.dtype)
+                    mask.div_(mask.mean().clamp_(min=1e-3))
+                    mask = distribute_tensor(mask, device_mesh = grad.device_mesh, placements = grad.placements)
+                else:
+                    mask = (exp_avg * grad > 0).to(grad.dtype)
+                    # mask = mask * (mask.numel() / (mask.sum() + 1)) ## original implementation, leaving it here for record
+                    mask.div_(mask.mean().clamp_(min=1e-3)) # https://huggingface.co/rwightman/timm-optim-caution found this implementation is more favoarable in many cases
                 norm_grad = (exp_avg * mask) / denom
                 p.add_(norm_grad, alpha=-step_size)
         return loss
