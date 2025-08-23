@@ -8,7 +8,7 @@ Our theoretical findings reveal that this modification preserves Adam’s Hamilt
 ---
 
 ## 🌟 News
-- **[2025-08-22]** Asynced Version of C-AdamW
+- **[2025-08-22]** Asynced batch update version of C-AdamW, tested on FSDP training up to 1B scale
 - **[2025-08-14]** Chinchilla Optimal (20x tokens/parameters) on FineWeb-edu with torchtitan
   - [Llama3 1B (AdamW)](https://huggingface.co/kz919/llama3_1b_chinchilla_8132025)
   - [Llama3 1B (C-AdamW)](https://huggingface.co/kz919/llama3_1b_cautious_chinchilla_8142025)
