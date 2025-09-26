@@ -230,7 +230,7 @@ def _multi_tensor_c_adam(
             torch._foreach_add_(exp_avg_sq_sqrt, eps)
 
             if cautious:
-                mask = torch._foreach_mul(device_exp_avgs, device_exp_avgs)
+                mask = torch._foreach_mul(device_exp_avgs, device_avgs)
                 mask = [m.gt(0.0).to(e.dtype) for m, e in zip(mask, device_exp_avgs)]
                 mean_mask = [m.mean().clamp(min=1e-3) for m in mask]
                 mask = [m / mm for m, mm in zip(mask, mean_mask)]
